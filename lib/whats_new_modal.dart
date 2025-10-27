@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/settings_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class WhatsNewModal extends StatelessWidget {
   final String version;
@@ -11,16 +10,6 @@ class WhatsNewModal extends StatelessWidget {
     return AlertDialog(
         title: Text("What's new: update $version"),
         actions: [
-          TextButton(
-              onPressed: () async {
-                await launchUrl(
-                    Uri.parse(
-                      "https://github.com/Fredolx/fred-tv-mobile/discussions/1",
-                    ),
-                    mode: LaunchMode.externalApplication);
-                Navigator.pop(context, false);
-              },
-              child: const Text("Donate")),
           TextButton(
               onPressed: () async {
                 await SettingsService.updateLastSeenVersion();
@@ -39,7 +28,7 @@ Hi! Thanks for supporting Fred TV. Here's everything new:
 
 - Changed name from Open TV to Fred TV due to trademark dispute, sorry!
 
-If you like Fred TV, please consider donating (Even a dollar helps tremendously), reporting issues on the github and sharing it with your friends.
+Thanks for using Fred TV! Report issues on the github and share it with your friends.
 ''',
                   ))),
         ));

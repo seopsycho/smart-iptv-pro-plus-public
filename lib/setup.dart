@@ -26,22 +26,44 @@ class _SetupState extends State<Setup> {
   bool formValid = false;
   Set<String> existingSourceNames = {};
 
-  Future showXtreamCorrectionModal() async {
-    return await showDialog(
-        context: context, builder: (context) => CorrectionModal());
+  Future<bool> showXtreamCorrectionModal(
+      String originalUrl, String correctedUrl, List<String> changes) async {
+    final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => CorrectionModal(
+              originalUrl: originalUrl,
+              correctedUrl: correctedUrl,
+              changes: changes,
+            ));
+    return result ?? false;
   }
 
   Future<String> fixUrl(String url) async {
-    var uri = Uri.parse(url);
+    final input = url;
+    String original = url.trim();
+    var uri = Uri.parse(original);
+    List<String> changes = [];
+    if (original != input) {
+      changes.add("Trimmed whitespace.");
+    }
+
     if (uri.scheme.isEmpty) {
-      uri = Uri.parse("http://$uri");
+      uri = Uri.parse("http://${uri.toString()}");
+      changes.add("Added 'http://' scheme.");
     }
     if (uri.path == "/" || uri.path.isEmpty) {
-      if (await showXtreamCorrectionModal()) {
-        uri = uri.resolve("player_api.php");
+      final newUri = uri.resolve("player_api.php");
+      if (newUri.toString() != uri.toString()) {
+        changes.add("Appended 'player_api.php' to the URL path.");
+        uri = newUri;
       }
     }
-    return uri.toString();
+    if (changes.isEmpty) {
+      return original;
+    }
+    final accept =
+        await showXtreamCorrectionModal(input, uri.toString(), changes);
+    return accept ? uri.toString() : original;
   }
 
   @override
@@ -222,26 +244,92 @@ class _SetupState extends State<Setup> {
                             if (sourceType == SourceType.xtream) {
                               url = await fixUrl(url!);
                             }
-                            final result = await Error.tryAsync(() async {
+
+                            // Steps for progress dialog
+                            final List<String> steps = sourceType == SourceType.xtream
+                                ? [
+                                    "Checking server status",
+                                    "Fetching live streaming categories",
+                                    "Fetching live streaming Channels",
+                                    "Fetching live movie categories",
+                                    "Fetching live films",
+                                    "Fetching live series categories",
+                                    "Fetching live series",
+                                    "Fetching Information",
+                                  ]
+                                : ["Fetching Information"];
+                            final completed = <String>{};
+                            late StateSetter setDialogState;
+
+                            final dialogFuture = showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (context) {
+                                return StatefulBuilder(
+                                  builder: (context, setState) {
+                                    setDialogState = setState;
+                                    return AlertDialog(
+                                      title: const Text("Loading Playlist"),
+                                      content: SizedBox(
+                                        width: 320,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: steps
+                                              .map((s) => ListTile(
+                                                    dense: true,
+                                                    leading: completed.contains(s)
+                                                        ? const Icon(Icons.check_circle, color: Colors.green)
+                                                        : const SizedBox(
+                                                            width: 24,
+                                                            height: 24,
+                                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                                          ),
+                                                    title: Text(s),
+                                                  ))
+                                              .toList(),
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: completed.length == steps.length
+                                              ? () => Navigator.pop(context)
+                                              : null,
+                                          child: const Text("Done"),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              },
+                            );
+
+                            final result = await Error.tryAsyncNoLoading(() async {
                               await Utils.processSource(
                                 Source(
                                   name: sourceName,
                                   sourceType: sourceType,
                                   url: url,
                                   username: sourceType == SourceType.xtream
-                                      ? (_formKey.currentState
-                                              ?.value["username"] as String)
-                                          .trim()
+                                      ? (_formKey.currentState?.value["username"] as String).trim()
                                       : null,
                                   password: sourceType == SourceType.xtream
-                                      ? (_formKey.currentState
-                                              ?.value["password"] as String)
-                                          .trim()
+                                      ? (_formKey.currentState?.value["password"] as String).trim()
                                       : null,
                                 ),
+                                false,
+                                (label, done) {
+                                  if (done && steps.contains(label)) {
+                                    completed.add(label);
+                                    setDialogState(() {});
+                                  }
+                                },
                               );
-                            }, context, "Successfully added source");
+                            }, context, true, "Successfully added source");
+
+                            await dialogFuture;
+
                             if (result.success) {
+                              if (!mounted) return;
                               Navigator.pushAndRemoveUntil(
                                 context,
                                 MaterialPageRoute(

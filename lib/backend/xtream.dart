@@ -18,7 +18,8 @@ const String getLiveStreamCategories = "get_live_categories";
 const String getVodCategories = "get_vod_categories";
 const String liveStreamExtension = "ts";
 
-Future<void> getXtream(Source source, bool wipe) async {
+Future<void> getXtream(Source source, bool wipe,
+    [void Function(String, bool)? onProgress]) async {
   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
       statements = [];
   List<ChannelPreserve>? preserve;
@@ -28,45 +29,67 @@ Future<void> getXtream(Source source, bool wipe) async {
     statements.add(Sql.wipeSource(source.id!));
   }
   source.urlOrigin = Uri.parse(source.url!).origin;
-  var results = await Future.wait([
-    getXtreamHttpData(getLiveStreams, source),
-    getXtreamHttpData(getLiveStreamCategories, source),
-    getXtreamHttpData(getVods, source),
-    getXtreamHttpData(getVodCategories, source),
-    getXtreamHttpData(getSeries, source),
-    getXtreamHttpData(getSeriesCategories, source),
-  ]);
+  onProgress?.call("Checking server status", false);
+  await getXtreamHttpData(getLiveStreams, source);
+  onProgress?.call("Checking server status", true);
+
+  onProgress?.call("Fetching live streaming categories", false);
+  final liveCategoriesJson =
+      await getXtreamHttpData(getLiveStreamCategories, source);
+  onProgress?.call("Fetching live streaming categories", true);
+
+  onProgress?.call("Fetching live streaming Channels", false);
+  final liveStreamsJson = await getXtreamHttpData(getLiveStreams, source);
+  onProgress?.call("Fetching live streaming Channels", true);
+
+  onProgress?.call("Fetching live movie categories", false);
+  final vodCategoriesJson = await getXtreamHttpData(getVodCategories, source);
+  onProgress?.call("Fetching live movie categories", true);
+
+  onProgress?.call("Fetching live films", false);
+  final vodsJson = await getXtreamHttpData(getVods, source);
+  onProgress?.call("Fetching live films", true);
+
+  onProgress?.call("Fetching live series categories", false);
+  final seriesCategoriesJson =
+      await getXtreamHttpData(getSeriesCategories, source);
+  onProgress?.call("Fetching live series categories", true);
+
+  onProgress?.call("Fetching live series", false);
+  final seriesJson = await getXtreamHttpData(getSeries, source);
+  onProgress?.call("Fetching live series", true);
+
   int failCount = 0;
-  if (results[0] != null && results[1] != null) {
+  if (liveStreamsJson != null && liveCategoriesJson != null) {
     try {
       processXtream(
           statements,
-          processJsonList(results[0], XtreamStream.fromJson),
-          processJsonList(results[1], XtreamCategory.fromJson),
+          processJsonList(liveStreamsJson, XtreamStream.fromJson),
+          processJsonList(liveCategoriesJson, XtreamCategory.fromJson),
           source,
           MediaType.livestream);
     } catch (e) {
       failCount++;
     }
   }
-  if (results[2] != null && results[3] != null) {
+  if (vodsJson != null && vodCategoriesJson != null) {
     try {
       processXtream(
           statements,
-          processJsonList(results[2], XtreamStream.fromJson),
-          processJsonList(results[3], XtreamCategory.fromJson),
+          processJsonList(vodsJson, XtreamStream.fromJson),
+          processJsonList(vodCategoriesJson, XtreamCategory.fromJson),
           source,
           MediaType.movie);
     } catch (e) {
       failCount++;
     }
   }
-  if (results[4] != null && results[5] != null) {
+  if (seriesJson != null && seriesCategoriesJson != null) {
     try {
       processXtream(
           statements,
-          processJsonList(results[4], XtreamStream.fromJson),
-          processJsonList(results[5], XtreamCategory.fromJson),
+          processJsonList(seriesJson, XtreamStream.fromJson),
+          processJsonList(seriesCategoriesJson, XtreamCategory.fromJson),
           source,
           MediaType.serie);
     } catch (e) {
@@ -76,11 +99,13 @@ Future<void> getXtream(Source source, bool wipe) async {
   if (failCount > 1) {
     return;
   }
+  onProgress?.call("Fetching Information", false);
   statements.add(Sql.updateGroups());
   if (preserve != null) {
     statements.add(Sql.restorePreserve(preserve));
   }
   await Sql.commitWrite(statements);
+  onProgress?.call("Fetching Information", true);
 }
 
 List<T> processJsonList<T>(

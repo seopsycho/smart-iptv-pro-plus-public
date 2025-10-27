@@ -24,19 +24,24 @@ class Utils {
 
   static Future<void> refreshSource(Source source) async {
     refreshedSeries.clear();
-    await processSource(source, true);
+    await processSource(source, true, null);
   }
 
-  static Future<void> processSource(Source source, [bool wipe = false]) async {
+  static Future<void> processSource(Source source,
+      [bool wipe = false, void Function(String, bool)? onProgress]) async {
     switch (source.sourceType) {
       case SourceType.m3u:
+        onProgress?.call("Fetching Information", false);
         await processM3U(source, wipe);
+        onProgress?.call("Fetching Information", true);
         break;
       case SourceType.m3uUrl:
+        onProgress?.call("Fetching Information", false);
         await processM3UUrl(source, wipe);
+        onProgress?.call("Fetching Information", true);
         break;
       case SourceType.xtream:
-        await getXtream(source, wipe);
+        await getXtream(source, wipe, onProgress);
         break;
     }
   }

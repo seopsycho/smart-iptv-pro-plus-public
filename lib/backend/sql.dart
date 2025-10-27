@@ -60,6 +60,66 @@ class Sql {
     };
   }
 
+  static Future<List<Channel>> getRecentLivestreams(
+      List<int> sourceIds, int limit) async {
+    var db = await DbFactory.db;
+    var results = await db.getAll('''
+      SELECT * FROM channels
+      WHERE url IS NOT NULL
+        AND media_type = ?
+        AND last_watched IS NOT NULL
+        AND source_id IN (${generatePlaceholders(sourceIds.length)})
+      ORDER BY last_watched DESC
+      LIMIT ?
+    ''', [MediaType.livestream.index, ...sourceIds, limit]);
+    return results.map(rowToChannel).toList();
+  }
+
+  static Future<List<Channel>> getFavoritesForSources(
+      List<int> sourceIds, int limit) async {
+    var db = await DbFactory.db;
+    var results = await db.getAll('''
+      SELECT * FROM channels
+      WHERE url IS NOT NULL
+        AND favorite = 1
+        AND source_id IN (${generatePlaceholders(sourceIds.length)})
+      ORDER BY id DESC
+      LIMIT ?
+    ''', [...sourceIds, limit]);
+    return results.map(rowToChannel).toList();
+  }
+
+  static Future<List<Channel>> getFavoritesByMediaType(
+      List<int> sourceIds, MediaType mediaType, int limit) async {
+    var db = await DbFactory.db;
+    var results = await db.getAll('''
+      SELECT * FROM channels
+      WHERE url IS NOT NULL
+        AND favorite = 1
+        AND media_type = ?
+        AND source_id IN (${generatePlaceholders(sourceIds.length)})
+      ORDER BY id DESC
+      LIMIT ?
+    ''', [mediaType.index, ...sourceIds, limit]);
+    return results.map(rowToChannel).toList();
+  }
+
+  static Future<List<Channel>> getFavoritesByMediaTypes(
+      List<int> sourceIds, List<MediaType> mediaTypes, int limit) async {
+    var db = await DbFactory.db;
+    final mtPlaceholders = generatePlaceholders(mediaTypes.length);
+    var results = await db.getAll('''
+      SELECT * FROM channels
+      WHERE url IS NOT NULL
+        AND favorite = 1
+        AND media_type IN ($mtPlaceholders)
+      AND source_id IN (${generatePlaceholders(sourceIds.length)})
+      ORDER BY id DESC
+      LIMIT ?
+    ''', [...mediaTypes.map((m) => m.index), ...sourceIds, limit]);
+    return results.map(rowToChannel).toList();
+  }
+
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
       updateGroups() {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
@@ -364,6 +424,15 @@ class Sql {
       SET url = ?, username = ?, password = ?
       WHERE id = ?
     ''', [source.url, source.username, source.password, source.id]);
+  }
+
+  static Future<void> updateChannelImage(int channelId, String imageUrl) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      UPDATE channels
+      SET image = ?
+      WHERE id = ?
+    ''', [imageUrl, channelId]);
   }
 
   static Future<Source> getSourceFromId(int id) async {

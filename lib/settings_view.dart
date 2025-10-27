@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/utils.dart';
-import 'package:open_tv/bottom_nav.dart';
 import 'package:open_tv/confirm_delete.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/select_dialog.dart';
 import 'package:open_tv/edit_dialog.dart';
-import 'package:open_tv/home.dart';
 import 'package:open_tv/loading.dart';
+import 'package:open_tv/home.dart';
 import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/id_data.dart';
 import 'package:open_tv/models/settings.dart';
@@ -17,7 +16,6 @@ import 'package:open_tv/models/source_type.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/setup.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -34,6 +32,27 @@ class _SettingsState extends State<SettingsView> {
   void initState() {
     super.initState();
     initAsync();
+  }
+
+  Future<void> _showMetadataProviderDialog() async {
+    await showDialog(
+        barrierDismissible: true,
+        context: context,
+        builder: (BuildContext context) {
+          return SelectDialog(
+              title: "Metadata provider",
+              data: [
+                IdData(id: 0, data: 'OMDB (default)'),
+                IdData(id: 1, data: 'TMDB'),
+              ],
+              action: (id) async {
+                setState(() {
+                  settings.metadataProvider = id == 1 ? 'tmdb' : 'omdb';
+                });
+                await updateSettings();
+                Navigator.of(context).pop();
+              });
+        });
   }
 
   Future<void> initAsync() async {
@@ -177,9 +196,45 @@ class _SettingsState extends State<SettingsView> {
         () async => await SettingsService.updateSettings(settings), context);
   }
 
+  Future<void> _showTmdbKeyDialog() async {
+    final controller = TextEditingController(text: settings.tmdbApiKey);
+    await showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => AlertDialog(
+              title: const Text('TMDB API Key'),
+              content: TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                    border: OutlineInputBorder(), hintText: 'Enter TMDB API Key'),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel')),
+                TextButton(
+                    onPressed: () async {
+                      setState(() {
+                        settings.tmdbApiKey = controller.text.trim();
+                      });
+                      await updateSettings();
+                      if (mounted) Navigator.pop(context);
+                    },
+                    child: const Text('Save')),
+              ],
+            ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text('Settings'),
+      ),
       body: Visibility(
           visible: !loading,
           child: Loading(
@@ -198,20 +253,24 @@ class _SettingsState extends State<SettingsView> {
                                       fontWeight: FontWeight.bold))),
                           const SizedBox(height: 10),
                           ListTile(
-                              title: const Text("Donate"),
-                              subtitle: const Text(
-                                  "Fred TV needs your help! Consider donating ❤️"),
-                              onTap: () async => await launchUrl(
-                                  Uri.parse(
-                                    "https://github.com/Fredolx/fred-tv-mobile/discussions/1",
-                                  ),
-                                  mode: LaunchMode.externalApplication)),
-                          ListTile(
                               title: const Text("Default view"),
                               subtitle:
                                   Text(viewTypeToString(settings.defaultView)),
                               onTap: () async =>
                                   await _showDefaultViewDialog(context)),
+                          ListTile(
+                            title: const Text('Metadata provider'),
+                            subtitle: Text(
+                                settings.metadataProvider == 'tmdb' ? 'TMDB' : 'OMDB'),
+                            onTap: _showMetadataProviderDialog,
+                          ),
+                          ListTile(
+                            title: const Text('TMDB API Key'),
+                            subtitle: Text(
+                                settings.tmdbApiKey.isNotEmpty ? 'Configured' : 'Not set'),
+                            trailing: const Icon(Icons.edit),
+                            onTap: _showTmdbKeyDialog,
+                          ),
                           ListTile(
                             title: const Text("Refresh sources on start"),
                             trailing: Row(
@@ -312,10 +371,6 @@ class _SettingsState extends State<SettingsView> {
                           ...sources.map(getSource)
                         ],
                       ))))),
-      bottomNavigationBar: BottomNav(
-        updateViewMode: updateView,
-        startingView: ViewType.settings,
-      ),
     );
   }
 }

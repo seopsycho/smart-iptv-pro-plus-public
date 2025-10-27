@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:open_tv/models/view_type.dart';
-import 'package:open_tv/settings_view.dart';
 
 class BottomNav extends StatefulWidget {
-  final Function(ViewType) updateViewMode;
-  final ViewType startingView;
-  final bool blockSettings;
+  final Function(int) onTabSelected;
+  final int startingIndex;
   const BottomNav({
     super.key,
-    required this.updateViewMode,
-    this.startingView = ViewType.all,
-    this.blockSettings = false,
+    required this.onTabSelected,
+    this.startingIndex = 0,
   });
 
   @override
@@ -24,34 +20,15 @@ class _BottomNavState extends State<BottomNav> {
   void initState() {
     super.initState();
     setState(() {
-      _selectedIndex = widget.startingView.index;
+      _selectedIndex = widget.startingIndex;
     });
   }
 
   void onBarTapped(int index) {
-    if (widget.blockSettings && index == ViewType.settings.index) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Settings disabled while refreshing on start")));
-      return;
-    }
     setState(() {
       _selectedIndex = index;
     });
-    if (_selectedIndex == ViewType.settings.index) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const SettingsView(),
-          transitionDuration: Duration.zero,
-          reverseTransitionDuration: Duration.zero,
-          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-              child,
-        ),
-        (route) => false,
-      );
-      return;
-    }
-    widget.updateViewMode(ViewType.values[_selectedIndex]);
+    widget.onTabSelected(_selectedIndex);
   }
 
   @override
@@ -67,22 +44,24 @@ class _BottomNavState extends State<BottomNav> {
           showUnselectedLabels: false,
           items: const <BottomNavigationBarItem>[
             BottomNavigationBarItem(
-              icon: Icon(Icons.list),
-              label: 'All',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard),
-              label: 'Categories',
+              icon: Icon(Icons.home),
+              label: 'Home',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.star),
               label: 'Favorites',
             ),
             BottomNavigationBarItem(
-                icon: Icon(Icons.history), label: "History"),
+              icon: Icon(Icons.live_tv),
+              label: 'Live TV',
+            ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.settings),
-              label: 'Settings',
+              icon: Icon(Icons.tv),
+              label: 'Series',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.movie),
+              label: 'Movies',
             ),
           ],
           currentIndex: _selectedIndex,

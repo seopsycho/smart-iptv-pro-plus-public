@@ -7,12 +7,16 @@ class Settings {
   bool showLivestreams;
   bool showMovies;
   bool showSeries;
+  String tmdbApiKey;
+  String metadataProvider; // 'omdb' (default) or 'tmdb'
   Settings(
       {this.defaultView = ViewType.all,
       this.refreshOnStart = false,
       this.showLivestreams = true,
       this.showMovies = true,
-      this.showSeries = true});
+      this.showSeries = true,
+      this.tmdbApiKey = "",
+      this.metadataProvider = "omdb"});
 
   List<MediaType> getMediaTypes() {
     return [

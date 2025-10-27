@@ -16,6 +16,14 @@ import 'package:open_tv/models/node_type.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/whats_new_modal.dart';
+import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/settings_view.dart';
+import 'package:open_tv/select_dialog.dart';
+import 'package:open_tv/models/id_data.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:open_tv/services/tmdb_service.dart';
+import 'package:open_tv/models/tmdb_item.dart';
+import 'package:open_tv/details.dart';
 
 class Home extends StatefulWidget {
   final HomeManager home;
@@ -35,7 +43,15 @@ class _HomeState extends State<Home> {
   bool reachedMax = false;
   final int pageSize = 36;
   List<Channel> channels = [];
+  // Feed data
+  List<Channel> recentLive = [];
+  List<Channel> favoriteTv = [];
+  List<Channel> favMovies = [];
+  List<Channel> favSeries = [];
+  List<TmdbItem> topSeries = [];
+  List<TmdbItem> topMovies = [];
   bool searchMode = false;
+  int favoritesFilter = 0;
   final FocusNode _focusNode = FocusNode();
   TextEditingController searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -50,6 +66,69 @@ class _HomeState extends State<Home> {
     initializeAsync();
   }
 
+  Future<void> loadFeed() async {
+    final sourceIds = widget.home.filters.sourceIds ?? [];
+    // Recent TV
+    final recent = await Sql.getRecentLivestreams(sourceIds, 20);
+    // Favorites by type
+    final favTv =
+        await Sql.getFavoritesByMediaType(sourceIds, MediaType.livestream, 30);
+    final favMov =
+        await Sql.getFavoritesByMediaType(sourceIds, MediaType.movie, 30);
+    final favSer =
+        await Sql.getFavoritesByMediaType(sourceIds, MediaType.serie, 30);
+    // TMDB trending (optional)
+    final settings = await SettingsService.getSettings();
+    List<TmdbItem> series = [];
+    List<TmdbItem> movies = [];
+    if (settings.tmdbApiKey.isNotEmpty) {
+      final tmdb = TmdbService(apiKey: settings.tmdbApiKey);
+      series = await tmdb.trendingSeries();
+      movies = await tmdb.trendingMovies();
+    }
+    if (!mounted) return;
+    setState(() {
+      recentLive = recent;
+      favoriteTv = favTv;
+      favMovies = favMov;
+      favSeries = favSer;
+      topSeries = series;
+      topMovies = movies;
+    });
+  }
+
+  Future<void> openSourceSelector() async {
+    // Build list of enabled sources + 'All sources' option
+    final allSources = await Sql.getSources();
+    final enabled = allSources.where((s) => s.enabled).toList();
+    final items = <IdData<String>>[
+      IdData(id: -1, data: 'All sources'),
+      ...enabled.map((s) => IdData(id: s.id!, data: s.name))
+    ];
+    if (!mounted) return;
+    showDialog(
+        barrierDismissible: true,
+        context: context,
+        builder: (BuildContext context) {
+          return SelectDialog(
+              title: "Select source",
+              data: items,
+              action: (id) async {
+                if (id == -1) {
+                  // All enabled sources
+                  widget.home.filters.sourceIds =
+                      enabled.map((s) => s.id!).toList();
+                } else {
+                  widget.home.filters.sourceIds = [id];
+                }
+                Navigator.of(context).pop();
+                // Reset paging and reload + refresh feed
+                await load(false);
+                await loadFeed();
+              });
+        });
+  }
+
   Future<void> initializeAsync() async {
     if (widget.home.filters.sourceIds == null) {
       final sources = await Sql.getEnabledSourcesMinimal();
@@ -60,6 +139,10 @@ class _HomeState extends State<Home> {
           (await SettingsService.getSettings()).getMediaTypes();
     }
     await load();
+    // Load feed sections if on Home tab
+    if (getStartingIndex() == 0) {
+      await loadFeed();
+    }
     final String? version = await SettingsService.shouldShowWhatsNew();
     if (widget.firstLaunch && version != null) {
       await showWhatsNew(version);
@@ -156,22 +239,53 @@ class _HomeState extends State<Home> {
     searchController.clear();
   }
 
-  ViewType getStartingView() {
-    if (widget.home.filters.groupId != null) {
-      return ViewType.categories;
+  int getStartingIndex() {
+    if (widget.home.filters.viewType == ViewType.favorites) {
+      return 1; // Favorites
     }
-    return widget.home.filters.viewType;
+    if (widget.home.filters.mediaTypes != null &&
+        widget.home.filters.mediaTypes!.length == 1) {
+      final m = widget.home.filters.mediaTypes!.first;
+      if (m == MediaType.livestream) return 2; // Live TV
+      if (m == MediaType.serie) return 3; // Series
+      if (m == MediaType.movie) return 4; // Movies
+    }
+    return 0; // Home
   }
 
-  void updateViewMode(ViewType type) {
+  void onTabSelected(int index) async {
+    // Map tabs: 0 Home, 1 Favorites, 2 Live TV, 3 Series, 4 Movies
+    List<MediaType>? mediaTypes;
+    ViewType viewType = ViewType.all;
+    if (index == 0) {
+      // Home -> use current settings toggles
+      final settings = await SettingsService.getSettings();
+      mediaTypes = settings.getMediaTypes();
+      viewType = ViewType.all;
+    } else if (index == 1) {
+      final settings = await SettingsService.getSettings();
+      mediaTypes = settings.getMediaTypes();
+      viewType = ViewType.favorites;
+    } else if (index == 2) {
+      mediaTypes = [MediaType.livestream];
+      viewType = ViewType.all;
+    } else if (index == 3) {
+      mediaTypes = [MediaType.serie];
+      viewType = ViewType.all;
+    } else if (index == 4) {
+      mediaTypes = [MediaType.movie];
+      viewType = ViewType.all;
+    }
+    if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
         NoPushAnimationMaterialPageRoute(
             builder: (context) => Home(
-                home: HomeManager(
-                    filters: Filters(
-                        viewType: type,
-                        mediaTypes: widget.home.filters.mediaTypes,
-                        sourceIds: widget.home.filters.sourceIds)))),
+                  home: HomeManager(
+                      filters: Filters(
+                          viewType: viewType,
+                          mediaTypes: mediaTypes,
+                          sourceIds: widget.home.filters.sourceIds)),
+                )),
         (route) => false);
   }
 
@@ -200,15 +314,51 @@ class _HomeState extends State<Home> {
           handleBack();
         },
         child: Scaffold(
-            appBar: widget.home.node != null
-                ? AppBar(
-                    title: Text(widget.home.node.toString()),
-                    leading: IconButton(
+            appBar: AppBar(
+              title: widget.home.node != null
+                  ? Text(widget.home.node.toString())
+                  : null,
+              leading: widget.home.node != null
+                  ? IconButton(
                       icon: const Icon(Icons.arrow_back),
                       onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  )
-                : null,
+                    )
+                  : null,
+              actions: widget.home.node == null
+                  ? [
+                      IconButton(
+                        tooltip: 'Select source',
+                        icon: const Icon(Icons.filter_list),
+                        onPressed: () async {
+                          await openSourceSelector();
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.settings),
+                        onPressed: () {
+                          if (blockSettings) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        "Settings disabled while refreshing on start")));
+                            return;
+                          }
+                          Navigator.push(
+                            context,
+                            PageRouteBuilder(
+                              pageBuilder: (_, __, ___) => const SettingsView(),
+                              transitionDuration: Duration.zero,
+                              reverseTransitionDuration: Duration.zero,
+                              transitionsBuilder: (context, animation,
+                                      secondaryAnimation, child) =>
+                                  child,
+                            ),
+                          );
+                        },
+                      )
+                    ]
+                  : null,
+            ),
             body: Loading(
                 child: SafeArea(
                     child: Column(children: [
@@ -224,6 +374,11 @@ class _HomeState extends State<Home> {
                               .surfaceContainer, // Background color
                           child: Row(
                             children: [
+                              if (widget.home.filters.viewType ==
+                                      ViewType.favorites &&
+                                  !searchMode &&
+                                  widget.home.node == null)
+                                _buildFavoritesTypeFilter(),
                               Expanded(
                                   child: TextField(
                                 controller: searchController,
@@ -269,32 +424,86 @@ class _HomeState extends State<Home> {
                           ),
                         )
                       : const SizedBox.shrink()),
+              if (widget.home.filters.viewType == ViewType.favorites &&
+                  !searchMode &&
+                  widget.home.node == null)
+                _buildFavoritesTypeFilter(),
               Expanded(
-                  child: GridView.builder(
-                shrinkWrap: true,
-                controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 15, 16, 5),
-                itemCount: channels.length,
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 315,
-                  mainAxisExtent: 120,
-                  mainAxisSpacing: 16,
-                  crossAxisSpacing: 16,
-                ),
-                itemBuilder: (context, index) {
-                  final channel = channels[index];
-                  return ChannelTile(
-                    channel: channel,
-                    parentContext: context,
-                    setNode: setNode,
-                  );
-                },
-              )),
+                  child: getStartingIndex() == 0 &&
+                          !searchMode &&
+                          widget.home.node == null
+                      ? SingleChildScrollView(
+                          child: Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (recentLive.isNotEmpty)
+                                _buildSection(
+                                    title: 'Recent TV Channels',
+                                    height: 210,
+                                    children: recentLive
+                                        .map((c) => _channelCard(c))
+                                        .toList()),
+                              if (favoriteTv.isNotEmpty)
+                                _buildSection(
+                                    title: 'Favorite TV Channels',
+                                    height: 210,
+                                    children: favoriteTv
+                                        .map((c) => _channelCard(c))
+                                        .toList()),
+                              if (topSeries.isNotEmpty)
+                                _buildTmdbGateOrSection(
+                                    title: 'Top Series',
+                                    items: topSeries,
+                                    isSeries: true)
+                              else if (favSeries.isNotEmpty)
+                                _buildSection(
+                                    title: 'Top Series',
+                                    height: 210,
+                                    children: favSeries
+                                        .map((c) => _channelCard(c))
+                                        .toList()),
+                              if (topMovies.isNotEmpty)
+                                _buildTmdbGateOrSection(
+                                    title: 'Top Movies',
+                                    items: topMovies,
+                                    isSeries: false)
+                              else if (favMovies.isNotEmpty)
+                                _buildSection(
+                                    title: 'Top Movies',
+                                    height: 210,
+                                    children: favMovies
+                                        .map((c) => _channelCard(c))
+                                        .toList()),
+                            ],
+                          ),
+                        ))
+                      : GridView.builder(
+                          shrinkWrap: true,
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 15, 16, 5),
+                          itemCount: channels.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 315,
+                            mainAxisExtent: 120,
+                            mainAxisSpacing: 16,
+                            crossAxisSpacing: 16,
+                          ),
+                          itemBuilder: (context, index) {
+                            final channel = channels[index];
+                            return ChannelTile(
+                              channel: channel,
+                              parentContext: context,
+                              setNode: setNode,
+                            );
+                          },
+                        )),
             ]))),
             bottomNavigationBar: BottomNav(
-              startingView: getStartingView(),
-              blockSettings: blockSettings,
-              updateViewMode: updateViewMode,
+              startingIndex: getStartingIndex(),
+              onTabSelected: onTabSelected,
             ),
             floatingActionButton: Visibility(
               visible: !searchMode,
@@ -304,5 +513,193 @@ class _HomeState extends State<Home> {
                 child: const Icon(Icons.search),
               ),
             )));
+  }
+
+  Widget _buildSection({
+    required String title,
+    required double height,
+    required List<Widget> children,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(title,
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: height,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFavoritesTypeFilter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Wrap(
+        spacing: 8,
+        children: [
+          ChoiceChip(
+            label: const Text('All'),
+            selected: favoritesFilter == 0,
+            onSelected: (v) {
+              if (v) _applyFavoritesFilter(0);
+            },
+          ),
+          ChoiceChip(
+            label: const Text('TV'),
+            selected: favoritesFilter == 1,
+            onSelected: (v) {
+              if (v) _applyFavoritesFilter(1);
+            },
+          ),
+          ChoiceChip(
+            label: const Text('Series'),
+            selected: favoritesFilter == 2,
+            onSelected: (v) {
+              if (v) _applyFavoritesFilter(2);
+            },
+          ),
+          ChoiceChip(
+            label: const Text('Movies'),
+            selected: favoritesFilter == 3,
+            onSelected: (v) {
+              if (v) _applyFavoritesFilter(3);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _applyFavoritesFilter(int idx) async {
+    setState(() {
+      favoritesFilter = idx;
+    });
+    List<MediaType>? mediaTypes;
+    if (idx == 0) {
+      final s = await SettingsService.getSettings();
+      mediaTypes = s.getMediaTypes();
+    } else if (idx == 1) {
+      mediaTypes = [MediaType.livestream];
+    } else if (idx == 2) {
+      mediaTypes = [MediaType.serie];
+    } else if (idx == 3) {
+      mediaTypes = [MediaType.movie];
+    }
+    widget.home.filters.viewType = ViewType.favorites;
+    widget.home.filters.mediaTypes = mediaTypes;
+    await load(false);
+  }
+
+  Widget _channelCard(Channel c) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => DetailsPage(
+                        channel: c,
+                      )));
+        },
+        child: SizedBox(
+          width: 140,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: (c.image?.trim().isNotEmpty ?? false)
+                      ? CachedNetworkImage(
+                          imageUrl: c.image!.trim(),
+                          fit: BoxFit.cover,
+                        )
+                      : Container(
+                          color: Theme.of(context).colorScheme.surfaceContainer,
+                          child: const Icon(Icons.tv, size: 48),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                c.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tmdbCard(TmdbItem item) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => TmdbDetailsPage(
+                        item: item,
+                        sourceIds: widget.home.filters.sourceIds ?? [],
+                      )));
+        },
+        child: SizedBox(
+          width: 140,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: (item.posterUrl != null)
+                      ? CachedNetworkImage(
+                          imageUrl: item.posterUrl!,
+                          fit: BoxFit.cover,
+                        )
+                      : Container(
+                          color: Theme.of(context).colorScheme.surfaceContainer,
+                          child: const Icon(Icons.local_movies, size: 48),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                item.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTmdbGateOrSection({
+    required String title,
+    required List<TmdbItem> items,
+    required bool isSeries,
+  }) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return _buildSection(
+        title: title, height: 260, children: items.map(_tmdbCard).toList());
   }
 }

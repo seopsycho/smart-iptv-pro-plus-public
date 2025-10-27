@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/home.dart';
@@ -6,21 +7,28 @@ import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/setup.dart';
+import 'package:open_tv/onboarding.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await dotenv.dotenv.load(fileName: ".env");
+  } catch (_) {}
   final hasSources = await Sql.hasSources();
   final settings = await SettingsService.getSettings();
+  final hasSeenOnboarding = await SettingsService.getHasSeenOnboarding();
   runApp(MyApp(
     skipSetup: hasSources,
     settings: settings,
+    showOnboarding: !hasSeenOnboarding,
   ));
 }
 
 class MyApp extends StatelessWidget {
   final bool skipSetup;
   final Settings settings;
-  const MyApp({super.key, required this.skipSetup, required this.settings});
+  final bool showOnboarding;
+  const MyApp({super.key, required this.skipSetup, required this.settings, required this.showOnboarding});
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +44,9 @@ class MyApp extends StatelessWidget {
         ),
         themeMode: ThemeMode.system,
         debugShowCheckedModeBanner: false,
-        home: skipSetup
+        home: showOnboarding
+            ? Onboarding(skipSetup: skipSetup, settings: settings)
+            : (skipSetup
             ? Home(
                 firstLaunch: true,
                 refresh: settings.refreshOnStart,
@@ -44,6 +54,6 @@ class MyApp extends StatelessWidget {
                     filters: Filters(
                   viewType: settings.defaultView,
                 )))
-            : const Setup());
+            : const Setup()));
   }
 }
