@@ -20,6 +20,7 @@ jobs:
       uses: subosito/flutter-action@v2
       with:
         channel: 'stable'
+        cache: true
 
     - name: Install Flutter Dependencies
       run: flutter pub get
@@ -29,13 +30,17 @@ jobs:
         sudo gem install cocoapods
         pod --version
 
-    - name: Install iOS Dependencies
+    - name: Build iOS (IPA, unsigned)
       run: |
-        cd ios
-        pod install --repo-update
-        cd ..
+        flutter clean
+        flutter pub get
+        flutter build ipa --release --no-codesign
 
-    - name: Build iOS
-      run: |
-        cd ios
-        xcodebuild -workspace Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-build-artifacts
+        if-no-files-found: warn
+        path: |
+          build/ios/ipa/
+          build/ios/archive/Runner.xcarchive
