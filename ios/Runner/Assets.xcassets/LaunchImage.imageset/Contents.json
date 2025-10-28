@@ -9,9 +9,14 @@
       "scale" : "2x"
     },
     {
-      "filename" : "original_icon.png",
       "idiom" : "universal",
       "scale" : "3x"
+    },
+    {
+      "filename" : "original_icon.png",
+      "idiom" : "universal",
+      "scale" : "3x",
+      "unassigned" : true
     }
   ],
   "info" : {

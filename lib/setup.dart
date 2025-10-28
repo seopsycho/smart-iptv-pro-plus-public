@@ -181,7 +181,7 @@ class _SetupState extends State<Setup> {
                                   border: OutlineInputBorder(),
                                 ),
                                 name: 'url',
-                              ))
+                              )),
                         if (_selectedIndex == SourceType.xtream.index)
                           const SizedBox(height: 15),
                         if (_selectedIndex == SourceType.xtream.index)

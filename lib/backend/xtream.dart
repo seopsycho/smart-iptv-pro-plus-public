@@ -31,7 +31,11 @@ Future<void> getXtream(Source source, bool wipe,
   }
   source.urlOrigin = Uri.parse(source.url!).origin;
   onProgress?.call("Checking server status", false);
-  await getXtreamHttpData(getLiveStreams, source);
+  final statusProbe = await getXtreamHttpData(getLiveStreams, source);
+  if (statusProbe == null) {
+    onProgress?.call("Checking server status", true);
+    throw Exception("Unable to reach Xtream server or invalid credentials.");
+  }
   onProgress?.call("Checking server status", true);
 
   onProgress?.call("Fetching live streaming categories", false);
@@ -60,46 +64,40 @@ Future<void> getXtream(Source source, bool wipe,
   final seriesJson = await getXtreamHttpData(getSeries, source);
   onProgress?.call("Fetching live series", true);
 
-  int failCount = 0;
-  if (liveStreamsJson != null && liveCategoriesJson != null) {
-    try {
-      processXtream(
-          statements,
-          processJsonList(liveStreamsJson, XtreamStream.fromJson),
-          processJsonList(liveCategoriesJson, XtreamCategory.fromJson),
-          source,
-          MediaType.livestream);
-    } catch (e) {
-      failCount++;
-    }
+  final liveOk = liveStreamsJson is List && liveCategoriesJson is List;
+  final vodOk = vodsJson is List && vodCategoriesJson is List;
+  final seriesOk = seriesJson is List && seriesCategoriesJson is List;
+
+  if (liveOk) {
+    processXtream(
+        statements,
+        processJsonList(liveStreamsJson as List, XtreamStream.fromJson),
+        processJsonList(liveCategoriesJson as List, XtreamCategory.fromJson),
+        source,
+        MediaType.livestream);
   }
-  if (vodsJson != null && vodCategoriesJson != null) {
-    try {
-      processXtream(
-          statements,
-          processJsonList(vodsJson, XtreamStream.fromJson),
-          processJsonList(vodCategoriesJson, XtreamCategory.fromJson),
-          source,
-          MediaType.movie);
-    } catch (e) {
-      failCount++;
-    }
+  if (vodOk) {
+    processXtream(
+        statements,
+        processJsonList(vodsJson as List, XtreamStream.fromJson),
+        processJsonList(vodCategoriesJson as List, XtreamCategory.fromJson),
+        source,
+        MediaType.movie);
   }
-  if (seriesJson != null && seriesCategoriesJson != null) {
-    try {
-      processXtream(
-          statements,
-          processJsonList(seriesJson, XtreamStream.fromJson),
-          processJsonList(seriesCategoriesJson, XtreamCategory.fromJson),
-          source,
-          MediaType.serie);
-    } catch (e) {
-      failCount++;
-    }
+  if (seriesOk) {
+    processXtream(
+        statements,
+        processJsonList(seriesJson as List, XtreamStream.fromJson),
+        processJsonList(seriesCategoriesJson as List, XtreamCategory.fromJson),
+        source,
+        MediaType.serie);
   }
-  if (failCount > 1) {
-    return;
+
+  if (!liveOk && !vodOk && !seriesOk) {
+    throw Exception(
+        "No content returned from server. Verify URL and credentials.");
   }
+
   onProgress?.call("Fetching Information", false);
   statements.add(Sql.updateGroups());
   if (preserve != null) {
@@ -201,9 +199,12 @@ Future<void> getEpisodes(Channel channel) async {
   var seriesId = int.parse(channel.url!);
   var source = await Sql.getSourceFromId(channel.sourceId);
   source.urlOrigin = Uri.parse(source.url!).origin;
-  var episodes = XtreamSeries.fromJson(await getXtreamHttpData(
-          getSeriesInfo, source, {'series_id': seriesId.toString()}))
-      .episodes;
+  final seriesResp = await getXtreamHttpData(
+      getSeriesInfo, source, {'series_id': seriesId.toString()});
+  if (seriesResp == null) {
+    throw Exception("Failed to fetch series info.");
+  }
+  var episodes = XtreamSeries.fromJson(seriesResp).episodes;
   episodes.sort((a, b) {
     final sa = int.tryParse(a.season) ?? 0;
     final sb = int.tryParse(b.season) ?? 0;
