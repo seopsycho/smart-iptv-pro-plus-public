@@ -165,10 +165,11 @@ class _SetupState extends State<Setup> {
                                     if (v == null || v.isEmpty) return null;
                                     final u = Uri.tryParse(v);
                                     if (u == null || !u.hasScheme) {
-                                      return 'Enter a valid URL starting with https://';
+                                      return 'Enter a valid URL starting with http:// or https://';
                                     }
-                                    if (u.scheme.toLowerCase() != 'https') {
-                                      return 'Only https:// URLs are supported';
+                                    final scheme = u.scheme.toLowerCase();
+                                    if (scheme != 'http' && scheme != 'https') {
+                                      return 'Only http:// or https:// URLs are supported';
                                     }
                                     return null;
                                   }
@@ -180,7 +181,7 @@ class _SetupState extends State<Setup> {
                                   border: OutlineInputBorder(),
                                 ),
                                 name: 'url',
-                              )),
+                              ))
                         if (_selectedIndex == SourceType.xtream.index)
                           const SizedBox(height: 15),
                         if (_selectedIndex == SourceType.xtream.index)
