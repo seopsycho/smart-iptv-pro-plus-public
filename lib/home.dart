@@ -51,6 +51,8 @@ class _HomeState extends State<Home> {
   List<Channel> favSeries = [];
   List<TmdbItem> topSeries = [];
   List<TmdbItem> topMovies = [];
+  List<Channel> recentMoviesHome = [];
+  List<Channel> recentSeriesHome = [];
   // Landing data for Movies/Series
   List<Channel> recentMovies = [];
   List<Channel> recentSeries = [];
@@ -188,6 +190,10 @@ class _HomeState extends State<Home> {
         await Sql.getFavoritesByMediaType(sourceIds, MediaType.movie, 30);
     final favSer =
         await Sql.getFavoritesByMediaType(sourceIds, MediaType.serie, 30);
+    final rMovies =
+        await Sql.getRecentlyAddedByMediaType(sourceIds, MediaType.movie, 30);
+    final rSeries =
+        await Sql.getRecentlyAddedByMediaType(sourceIds, MediaType.serie, 30);
     // TMDB trending (optional)
     final settings = await SettingsService.getSettings();
     List<TmdbItem> series = [];
@@ -203,6 +209,8 @@ class _HomeState extends State<Home> {
       favoriteTv = favTv;
       favMovies = favMov;
       favSeries = favSer;
+      recentMoviesHome = rMovies;
+      recentSeriesHome = rSeries;
       topSeries = series;
       topMovies = movies;
     });
@@ -579,13 +587,7 @@ class _HomeState extends State<Home> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (recentLive.isNotEmpty)
-                                _buildSection(
-                                    title: 'Recent TV Channels',
-                                    height: 210,
-                                    children: recentLive
-                                        .map((c) => _channelCard(c))
-                                        .toList()),
+                              _buildRecentTvSection(),
                               if (favoriteTv.isNotEmpty)
                                 _buildSection(
                                     title: 'Favorite TV Channels',
@@ -598,6 +600,13 @@ class _HomeState extends State<Home> {
                                     title: 'Top Series',
                                     items: topSeries,
                                     isSeries: true),
+                              if (recentSeriesHome.isNotEmpty)
+                                _buildSection(
+                                    title: 'Recently added Series',
+                                    height: 210,
+                                    children: recentSeriesHome
+                                        .map((c) => _channelCard(c))
+                                        .toList()),
                               if (favSeries.isNotEmpty)
                                 _buildSection(
                                     title: 'Watchlist • Series',
@@ -610,6 +619,13 @@ class _HomeState extends State<Home> {
                                     title: 'Top Movies',
                                     items: topMovies,
                                     isSeries: false),
+                              if (recentMoviesHome.isNotEmpty)
+                                _buildSection(
+                                    title: 'Recently added Movies',
+                                    height: 210,
+                                    children: recentMoviesHome
+                                        .map((c) => _channelCard(c))
+                                        .toList()),
                               if (favMovies.isNotEmpty)
                                 _buildSection(
                                     title: 'Watchlist • Movies',
@@ -617,7 +633,7 @@ class _HomeState extends State<Home> {
                                     children: favMovies
                                         .map((c) => _channelCard(c))
                                         .toList()),
-                            ],
+                          ],
                           ),
                         ))
                       : (getStartingIndex() == 4 && !searchMode && widget.home.node == null)
@@ -684,6 +700,40 @@ class _HomeState extends State<Home> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentTvSection() {
+    const String title = 'Recently watched TV channels';
+    if (recentLive.isNotEmpty) {
+      return _buildSection(
+          title: title,
+          height: 210,
+          children: recentLive.map((c) => _channelCard(c)).toList());
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child:
+                Text(title, style: Theme.of(context).textTheme.titleLarge),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              'This will show up once you start watching TV channels',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
         ],
