@@ -48,8 +48,8 @@ class _SetupState extends State<Setup> {
     }
 
     if (uri.scheme.isEmpty) {
-      uri = Uri.parse("http://${uri.toString()}");
-      changes.add("Added 'http://' scheme.");
+      uri = Uri.parse("https://${uri.toString()}");
+      changes.add("Added 'https://' scheme.");
     }
     if (uri.path == "/" || uri.path.isEmpty) {
       final newUri = uri.resolve("player_api.php");
@@ -158,8 +158,21 @@ class _SetupState extends State<Setup> {
                               child: FormBuilderTextField(
                                 autovalidateMode:
                                     AutovalidateMode.onUserInteraction,
-                                validator: FormBuilderValidators.compose(
-                                    [FormBuilderValidators.required()]),
+                                validator: FormBuilderValidators.compose([
+                                  FormBuilderValidators.required(),
+                                  (value) {
+                                    final v = value?.trim();
+                                    if (v == null || v.isEmpty) return null;
+                                    final u = Uri.tryParse(v);
+                                    if (u == null || !u.hasScheme) {
+                                      return 'Enter a valid URL starting with https://';
+                                    }
+                                    if (u.scheme.toLowerCase() != 'https') {
+                                      return 'Only https:// URLs are supported';
+                                    }
+                                    return null;
+                                  }
+                                ]),
                                 decoration: const InputDecoration(
                                   labelText: 'URL', // Label inside the input
                                   prefixIcon: Icon(Icons
@@ -246,18 +259,19 @@ class _SetupState extends State<Setup> {
                             }
 
                             // Steps for progress dialog
-                            final List<String> steps = sourceType == SourceType.xtream
-                                ? [
-                                    "Checking server status",
-                                    "Fetching live streaming categories",
-                                    "Fetching live streaming Channels",
-                                    "Fetching live movie categories",
-                                    "Fetching live films",
-                                    "Fetching live series categories",
-                                    "Fetching live series",
-                                    "Fetching Information",
-                                  ]
-                                : ["Fetching Information"];
+                            final List<String> steps =
+                                sourceType == SourceType.xtream
+                                    ? [
+                                        "Checking server status",
+                                        "Fetching live streaming categories",
+                                        "Fetching live streaming Channels",
+                                        "Fetching live movie categories",
+                                        "Fetching live films",
+                                        "Fetching live series categories",
+                                        "Fetching live series",
+                                        "Fetching Information",
+                                      ]
+                                    : ["Fetching Information"];
                             final completed = <String>{};
                             late StateSetter setDialogState;
 
@@ -277,12 +291,18 @@ class _SetupState extends State<Setup> {
                                           children: steps
                                               .map((s) => ListTile(
                                                     dense: true,
-                                                    leading: completed.contains(s)
-                                                        ? const Icon(Icons.check_circle, color: Colors.green)
+                                                    leading: completed
+                                                            .contains(s)
+                                                        ? const Icon(
+                                                            Icons.check_circle,
+                                                            color: Colors.green)
                                                         : const SizedBox(
                                                             width: 24,
                                                             height: 24,
-                                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                                            child:
+                                                                CircularProgressIndicator(
+                                                                    strokeWidth:
+                                                                        2),
                                                           ),
                                                     title: Text(s),
                                                   ))
@@ -291,9 +311,10 @@ class _SetupState extends State<Setup> {
                                       ),
                                       actions: [
                                         TextButton(
-                                          onPressed: completed.length == steps.length
-                                              ? () => Navigator.pop(context)
-                                              : null,
+                                          onPressed:
+                                              completed.length == steps.length
+                                                  ? () => Navigator.pop(context)
+                                                  : null,
                                           child: const Text("Done"),
                                         ),
                                       ],
@@ -303,17 +324,22 @@ class _SetupState extends State<Setup> {
                               },
                             );
 
-                            final result = await Error.tryAsyncNoLoading(() async {
+                            final result =
+                                await Error.tryAsyncNoLoading(() async {
                               await Utils.processSource(
                                 Source(
                                   name: sourceName,
                                   sourceType: sourceType,
                                   url: url,
                                   username: sourceType == SourceType.xtream
-                                      ? (_formKey.currentState?.value["username"] as String).trim()
+                                      ? (_formKey.currentState
+                                              ?.value["username"] as String)
+                                          .trim()
                                       : null,
                                   password: sourceType == SourceType.xtream
-                                      ? (_formKey.currentState?.value["password"] as String).trim()
+                                      ? (_formKey.currentState
+                                              ?.value["password"] as String)
+                                          .trim()
                                       : null,
                                 ),
                                 false,

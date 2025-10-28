@@ -121,13 +121,49 @@ class DbFactory {
         await tx.execute('''
           CREATE INDEX index_groups_media_type ON groups(media_type);
         ''');
+      }))
+      ..add(SqliteMigration(4, (tx) async {
+        await tx.execute('''
+          ALTER TABLE groups
+          ADD COLUMN hidden integer DEFAULT 0;
+        ''');
+        await tx.execute('''
+          ALTER TABLE groups
+          ADD COLUMN position integer;
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_groups_hidden ON groups(hidden);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_groups_position ON groups(position);
+        ''');
       }));
     await migrations.migrate(db);
+    // Improve concurrency: readers don't block writers and vice-versa
+    try {
+      await db.execute("PRAGMA journal_mode=WAL;");
+      await db.execute("PRAGMA synchronous=NORMAL;");
+      await db.execute("PRAGMA busy_timeout=5000;");
+    } catch (_) {}
     return db;
   }
 
   static Future<SqliteDatabase> get db async {
-    _db ??= await _createDB();
+    if (_db == null) {
+      _db = await _createDB();
+      return _db!;
+    }
+    // Detect ClosedException or invalid state and reopen
+    try {
+      await _db!.get("SELECT 1");
+    } catch (_) {
+      _db = await _createDB();
+    }
     return _db!;
+  }
+
+  // Allow callers to force a reopen (e.g., after fatal errors)
+  static void reset() {
+    _db = null;
   }
 }

@@ -98,68 +98,82 @@ class _ChannelTileState extends State<ChannelTile> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-        elevation: _focusNode.hasFocus ? 8.0 : 4.0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        color: widget.channel.favorite
-            ? Theme.of(context).colorScheme.surfaceContainerHighest
-            : Theme.of(context).colorScheme.surfaceContainer,
-        child: InkWell(
-          focusNode: _focusNode,
-          onLongPress: favorite,
-          onTap: () async => await play(),
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-              padding: const EdgeInsets.all(5),
-              child: Row(
-                children: [
-                  Expanded(
-                      flex: 3,
-                      child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: ((widget.channel.image?.trim().isNotEmpty ?? false) || _omdbPoster != null)
-                              ? CachedNetworkImage(
-                                  width: 1000,
-                                  fit: BoxFit.contain,
-                                  errorWidget: (_, __, ___) =>
-                                      Image.asset("assets/icon.png"),
-                                  imageUrl: (widget.channel.image?.trim().isNotEmpty ?? false)
-                                      ? widget.channel.image!.trim()
-                                      : _omdbPoster!,
-                                )
-                              : (_omdbPoster != null
-                                  ? CachedNetworkImage(
-                                      width: 1000,
-                                      fit: BoxFit.contain,
-                                      errorWidget: (_, __, ___) =>
-                                          Image.asset("assets/icon.png"),
-                                      imageUrl: _omdbPoster!,
-                                    )
-                                  : Image.asset(
-                                      "assets/icon.png",
-                                      fit: BoxFit.contain,
-                                    )))),
-                  const Expanded(flex: 1, child: SizedBox()),
-                  Expanded(
-                      flex: 8,
-                      child: LayoutBuilder(builder: (context, constraints) {
-                        final style = Theme.of(context).textTheme.bodyMedium!;
-                        final fontSize = MediaQuery.of(context)
-                            .textScaler
-                            .scale(style.fontSize!);
-                        final lineHeight = style.height! * fontSize;
-                        final maxLines =
-                            (constraints.maxHeight / lineHeight).floor();
-                        return Text(
-                          widget.channel.name,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: maxLines,
-                        );
-                      }))
-                ],
-              )),
-        ));
+    final cs = Theme.of(context).colorScheme;
+    final accent = cs.primary;
+    final outline = cs.outlineVariant;
+    return AnimatedScale(
+        scale: _focusNode.hasFocus ? 1.03 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        child: Card(
+            clipBehavior: Clip.antiAlias,
+            shadowColor: Colors.black54,
+            elevation: _focusNode.hasFocus ? 8.0 : 4.0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                  color: _focusNode.hasFocus ? accent : outline, width:  _focusNode.hasFocus ? 2 : 1),
+            ),
+            color: widget.channel.favorite
+                ? cs.surfaceContainerHighest
+                : cs.surfaceContainer,
+            child: InkWell(
+              focusNode: _focusNode,
+              onLongPress: favorite,
+              onTap: () async => await play(),
+              borderRadius: BorderRadius.circular(12),
+              focusColor: const Color(0x33E50914),
+              child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                          flex: 3,
+                          child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: AspectRatio(
+                                  aspectRatio: (widget.channel.mediaType == MediaType.livestream)
+                                      ? 16 / 9
+                                      : 2 / 3,
+                                  child: ((widget.channel.image?.trim().isNotEmpty ?? false) || _omdbPoster != null)
+                                      ? CachedNetworkImage(
+                                          fit: BoxFit.cover,
+                                          errorWidget: (_, __, ___) =>
+                                              Image.asset("assets/icon.png"),
+                                          imageUrl: (widget.channel.image?.trim().isNotEmpty ?? false)
+                                              ? widget.channel.image!.trim()
+                                              : _omdbPoster!,
+                                        )
+                                      : (_omdbPoster != null
+                                          ? CachedNetworkImage(
+                                              fit: BoxFit.cover,
+                                              errorWidget: (_, __, ___) =>
+                                                  Image.asset("assets/icon.png"),
+                                              imageUrl: _omdbPoster!,
+                                            )
+                                          : Image.asset(
+                                              "assets/icon.png",
+                                              fit: BoxFit.cover,
+                                            ))))),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          flex: 8,
+                          child: LayoutBuilder(builder: (context, constraints) {
+                            final style = Theme.of(context).textTheme.bodyMedium!;
+                            final fontSize = MediaQuery.of(context)
+                                .textScaler
+                                .scale(style.fontSize!);
+                            final lineHeight = (style.height ?? 1.3) * fontSize;
+                            final maxLines =
+                                (constraints.maxHeight / lineHeight).floor();
+                            return Text(
+                              widget.channel.name,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: maxLines,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            );
+                          }))
+                    ],
+                  )),
+            )));
   }
 }

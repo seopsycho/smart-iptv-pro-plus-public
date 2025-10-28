@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_feather_icons/flutter_feather_icons.dart';
 
 class BottomNav extends StatefulWidget {
   final Function(int) onTabSelected;
@@ -44,23 +45,23 @@ class _BottomNavState extends State<BottomNav> {
           showUnselectedLabels: false,
           items: const <BottomNavigationBarItem>[
             BottomNavigationBarItem(
-              icon: Icon(Icons.home),
+              icon: Icon(FeatherIcons.home),
               label: 'Home',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.star),
+              icon: Icon(FeatherIcons.star),
               label: 'Favorites',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.live_tv),
+              icon: Icon(FeatherIcons.tv),
               label: 'Live TV',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.tv),
+              icon: Icon(FeatherIcons.monitor),
               label: 'Series',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.movie),
+              icon: Icon(FeatherIcons.film),
               label: 'Movies',
             ),
           ],

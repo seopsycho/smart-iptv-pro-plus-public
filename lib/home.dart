@@ -24,6 +24,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/services/tmdb_service.dart';
 import 'package:open_tv/models/tmdb_item.dart';
 import 'package:open_tv/details.dart';
+import 'package:open_tv/manage_categories.dart';
 
 class Home extends StatefulWidget {
   final HomeManager home;
@@ -50,6 +51,11 @@ class _HomeState extends State<Home> {
   List<Channel> favSeries = [];
   List<TmdbItem> topSeries = [];
   List<TmdbItem> topMovies = [];
+  // Landing data for Movies/Series
+  List<Channel> recentMovies = [];
+  List<Channel> recentSeries = [];
+  List<Channel> movieCategories = [];
+  List<Channel> seriesCategories = [];
   bool searchMode = false;
   int favoritesFilter = 0;
   final FocusNode _focusNode = FocusNode();
@@ -64,6 +70,111 @@ class _HomeState extends State<Home> {
     super.initState();
     _scrollController.addListener(_scrollListener);
     initializeAsync();
+  }
+
+  Future<void> _refreshCategoriesAfterChange() async {
+    // Refresh both list/grid as needed without assumptions
+    await load(false);
+    await loadLandingSections();
+  }
+
+  Future<void> _openManageCategories() async {
+    final sourceIds = widget.home.filters.sourceIds ?? [];
+    final mediaTypes = widget.home.filters.mediaTypes ?? [];
+    await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ManageCategoriesPage(
+              sourceIds: sourceIds,
+              mediaTypes: mediaTypes,
+            )));
+    if (!mounted) return;
+    await _refreshCategoriesAfterChange();
+  }
+
+  void _showCategoryOptions(Channel c) {
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        builder: (ctx) {
+          return FutureBuilder<bool>(
+              future: Sql.getGroupHidden(c.id!),
+              builder: (context, snap) {
+                final hidden = snap.data == true;
+                return SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: Icon(hidden ? Icons.visibility : Icons.visibility_off),
+                          title: Text(hidden ? 'Unhide category' : 'Hide category'),
+                          onTap: () async {
+                            await Sql.setGroupHidden(c.id!, !hidden);
+                            if (!mounted) return;
+                            Navigator.of(context).pop();
+                            await _refreshCategoriesAfterChange();
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.tune),
+                          title: const Text('Manage categories'),
+                          onTap: () async {
+                            Navigator.of(context).pop();
+                            await _openManageCategories();
+                          },
+                        ),
+                        const SizedBox(height: 4),
+                        ListTile(
+                          leading: const Icon(Icons.close),
+                          title: const Text('Close'),
+                          onTap: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              });
+        });
+  }
+
+  Future<void> loadLandingSections() async {
+    final sourceIds = widget.home.filters.sourceIds ?? [];
+    final settings = await SettingsService.getSettings();
+    if (widget.home.filters.mediaTypes != null &&
+        widget.home.filters.mediaTypes!.length == 1) {
+      final mt = widget.home.filters.mediaTypes!.first;
+      if (mt == MediaType.movie) {
+        final recent =
+            await Sql.getRecentlyAddedByMediaType(sourceIds, MediaType.movie, 30);
+        final cats = await Sql.getAllGroupsByMediaTypes(sourceIds, [MediaType.movie]);
+        List<TmdbItem> movies = [];
+        if (settings.tmdbApiKey.isNotEmpty) {
+          movies = await TmdbService(apiKey: settings.tmdbApiKey).trendingMovies();
+        }
+        if (!mounted) return;
+        setState(() {
+          recentMovies = recent;
+          movieCategories = cats;
+          topMovies = movies;
+        });
+      } else if (mt == MediaType.serie) {
+        final recent =
+            await Sql.getRecentlyAddedByMediaType(sourceIds, MediaType.serie, 30);
+        final cats = await Sql.getAllGroupsByMediaTypes(sourceIds, [MediaType.serie]);
+        List<TmdbItem> series = [];
+        if (settings.tmdbApiKey.isNotEmpty) {
+          series = await TmdbService(apiKey: settings.tmdbApiKey).trendingSeries();
+        }
+        if (!mounted) return;
+        setState(() {
+          recentSeries = recent;
+          seriesCategories = cats;
+          topSeries = series;
+        });
+      }
+    }
   }
 
   Future<void> loadFeed() async {
@@ -122,9 +233,14 @@ class _HomeState extends State<Home> {
                   widget.home.filters.sourceIds = [id];
                 }
                 Navigator.of(context).pop();
-                // Reset paging and reload + refresh feed
+                // Reset paging and reload sections according to current tab
                 await load(false);
-                await loadFeed();
+                final idx = getStartingIndex();
+                if (idx == 0) {
+                  await loadFeed();
+                } else if (idx == 3 || idx == 4) {
+                  await loadLandingSections();
+                }
               });
         });
   }
@@ -142,6 +258,8 @@ class _HomeState extends State<Home> {
     // Load feed sections if on Home tab
     if (getStartingIndex() == 0) {
       await loadFeed();
+    } else if (getStartingIndex() == 3 || getStartingIndex() == 4) {
+      await loadLandingSections();
     }
     final String? version = await SettingsService.shouldShowWhatsNew();
     if (widget.firstLaunch && version != null) {
@@ -189,7 +307,17 @@ class _HomeState extends State<Home> {
       widget.home.filters.page = 1;
     }
     await Error.tryAsyncNoLoading(() async {
-      List<Channel> channels = await Sql.search(widget.home.filters);
+      List<Channel> channels;
+      if (widget.home.filters.viewType == ViewType.categories &&
+          widget.home.filters.mediaTypes != null &&
+          widget.home.filters.sourceIds != null) {
+        // Show all categories at once
+        channels = await Sql.getAllGroupsByMediaTypes(
+            widget.home.filters.sourceIds!, widget.home.filters.mediaTypes!);
+        reachedMax = true;
+      } else {
+        channels = await Sql.search(widget.home.filters);
+      }
       if (!more) {
         setState(() {
           this.channels = channels;
@@ -199,7 +327,9 @@ class _HomeState extends State<Home> {
           this.channels.addAll(channels);
         });
       }
-      reachedMax = channels.length < pageSize;
+      if (widget.home.filters.viewType != ViewType.categories) {
+        reachedMax = channels.length < pageSize;
+      }
     }, context);
   }
 
@@ -268,7 +398,7 @@ class _HomeState extends State<Home> {
       viewType = ViewType.favorites;
     } else if (index == 2) {
       mediaTypes = [MediaType.livestream];
-      viewType = ViewType.all;
+      viewType = ViewType.categories; // categories first for Live TV
     } else if (index == 3) {
       mediaTypes = [MediaType.serie];
       viewType = ViewType.all;
@@ -335,7 +465,7 @@ class _HomeState extends State<Home> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.settings),
-                        onPressed: () {
+                        onPressed: () async {
                           if (blockSettings) {
                             ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -343,7 +473,7 @@ class _HomeState extends State<Home> {
                                         "Settings disabled while refreshing on start")));
                             return;
                           }
-                          Navigator.push(
+                          await Navigator.push(
                             context,
                             PageRouteBuilder(
                               pageBuilder: (_, __, ___) => const SettingsView(),
@@ -354,6 +484,17 @@ class _HomeState extends State<Home> {
                                   child,
                             ),
                           );
+                          // After settings, re-sync enabled sources and reload
+                          final enabled = await Sql.getEnabledSourcesMinimal();
+                          widget.home.filters.sourceIds =
+                              enabled.map((s) => s.id).toList();
+                          await load(false);
+                          final idx = getStartingIndex();
+                          if (idx == 0) {
+                            await loadFeed();
+                          } else if (idx == 3 || idx == 4) {
+                            await loadLandingSections();
+                          }
                         },
                       )
                     ]
@@ -456,10 +597,10 @@ class _HomeState extends State<Home> {
                                 _buildTmdbGateOrSection(
                                     title: 'Top Series',
                                     items: topSeries,
-                                    isSeries: true)
-                              else if (favSeries.isNotEmpty)
+                                    isSeries: true),
+                              if (favSeries.isNotEmpty)
                                 _buildSection(
-                                    title: 'Top Series',
+                                    title: 'Watchlist • Series',
                                     height: 210,
                                     children: favSeries
                                         .map((c) => _channelCard(c))
@@ -468,10 +609,10 @@ class _HomeState extends State<Home> {
                                 _buildTmdbGateOrSection(
                                     title: 'Top Movies',
                                     items: topMovies,
-                                    isSeries: false)
-                              else if (favMovies.isNotEmpty)
+                                    isSeries: false),
+                              if (favMovies.isNotEmpty)
                                 _buildSection(
-                                    title: 'Top Movies',
+                                    title: 'Watchlist • Movies',
                                     height: 210,
                                     children: favMovies
                                         .map((c) => _channelCard(c))
@@ -479,6 +620,10 @@ class _HomeState extends State<Home> {
                             ],
                           ),
                         ))
+                      : (getStartingIndex() == 4 && !searchMode && widget.home.node == null)
+                          ? _buildMoviesLanding()
+                          : (getStartingIndex() == 3 && !searchMode && widget.home.node == null)
+                              ? _buildSeriesLanding()
                       : GridView.builder(
                           shrinkWrap: true,
                           controller: _scrollController,
@@ -493,6 +638,9 @@ class _HomeState extends State<Home> {
                           ),
                           itemBuilder: (context, index) {
                             final channel = channels[index];
+                            if (channel.mediaType == MediaType.group) {
+                              return _categoryGridTile(channel);
+                            }
                             return ChannelTile(
                               channel: channel,
                               parentContext: context,
@@ -527,9 +675,7 @@ class _HomeState extends State<Home> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(title,
-                style:
-                    const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+            child: Text(title, style: Theme.of(context).textTheme.titleLarge),
           ),
           const SizedBox(height: 10),
           SizedBox(
@@ -702,4 +848,98 @@ class _HomeState extends State<Home> {
     return _buildSection(
         title: title, height: 260, children: items.map(_tmdbCard).toList());
   }
+
+  Widget _categoryGridTile(Channel c) {
+    return InkWell(
+      onTap: () {
+        setNode(Node(id: c.id!, name: c.name, type: NodeType.category));
+      },
+      onLongPress: () => _showCategoryOptions(c),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant, width: 1),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Center(
+          child: Text(
+            c.name,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryGrid(String title, List<Channel> categories) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Text(title,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: categories.length,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 220,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 16 / 9,
+            ),
+            itemBuilder: (context, index) => _categoryGridTile(categories[index]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildMoviesLanding() {
+    return SingleChildScrollView(
+        child: Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (topMovies.isNotEmpty)
+          _buildTmdbGateOrSection(
+              title: 'Trending Movies', items: topMovies, isSeries: false),
+        if (recentMovies.isNotEmpty)
+          _buildSection(
+              title: 'Recently added Movies',
+              height: 210,
+              children: recentMovies.map((c) => _channelCard(c)).toList()),
+        if (movieCategories.isNotEmpty)
+          _buildCategoryGrid('Categories', movieCategories),
+      ]),
+    ));
+  }
+
+  Widget _buildSeriesLanding() {
+    return SingleChildScrollView(
+        child: Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (topSeries.isNotEmpty)
+          _buildTmdbGateOrSection(
+              title: 'Trending Series', items: topSeries, isSeries: true),
+        if (recentSeries.isNotEmpty)
+          _buildSection(
+              title: 'Recently added Series',
+              height: 210,
+              children: recentSeries.map((c) => _channelCard(c)).toList()),
+        if (seriesCategories.isNotEmpty)
+          _buildCategoryGrid('Categories', seriesCategories),
+      ]),
+    ));
+  }
+
 }

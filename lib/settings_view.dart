@@ -16,6 +16,8 @@ import 'package:open_tv/models/source_type.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/setup.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -28,6 +30,14 @@ class _SettingsState extends State<SettingsView> {
   Settings settings = Settings();
   List<Source> sources = [];
   bool loading = true;
+  String _sourceCodeUrl() {
+    try {
+      final v = dotenv.dotenv.env['SOURCE_CODE_URL'];
+      return (v != null && v.isNotEmpty) ? v : 'https://example.com/source';
+    } catch (_) {
+      return 'https://example.com/source';
+    }
+  }
   @override
   void initState() {
     super.initState();
@@ -206,7 +216,8 @@ class _SettingsState extends State<SettingsView> {
               content: TextField(
                 controller: controller,
                 decoration: const InputDecoration(
-                    border: OutlineInputBorder(), hintText: 'Enter TMDB API Key'),
+                    border: OutlineInputBorder(),
+                    hintText: 'Enter TMDB API Key'),
               ),
               actions: [
                 TextButton(
@@ -260,14 +271,16 @@ class _SettingsState extends State<SettingsView> {
                                   await _showDefaultViewDialog(context)),
                           ListTile(
                             title: const Text('Metadata provider'),
-                            subtitle: Text(
-                                settings.metadataProvider == 'tmdb' ? 'TMDB' : 'OMDB'),
+                            subtitle: Text(settings.metadataProvider == 'tmdb'
+                                ? 'TMDB'
+                                : 'OMDB'),
                             onTap: _showMetadataProviderDialog,
                           ),
                           ListTile(
                             title: const Text('TMDB API Key'),
-                            subtitle: Text(
-                                settings.tmdbApiKey.isNotEmpty ? 'Configured' : 'Not set'),
+                            subtitle: Text(settings.tmdbApiKey.isNotEmpty
+                                ? 'Configured'
+                                : 'Not set'),
                             trailing: const Icon(Icons.edit),
                             onTap: _showTmdbKeyDialog,
                           ),
@@ -337,6 +350,47 @@ class _SettingsState extends State<SettingsView> {
                                   },
                                 ),
                               ],
+                            ),
+                          ),
+                          const Divider(),
+                          const Padding(
+                              padding: EdgeInsets.only(left: 10),
+                              child: Text('About',
+                                  style: TextStyle(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.bold))),
+                          ListTile(
+                            title: const Text('Source code'),
+                            subtitle: Text(_sourceCodeUrl()),
+                            trailing: const Icon(Icons.launch),
+                            onTap: () async {
+                              final uri = Uri.parse(_sourceCodeUrl());
+                              await launchUrl(uri,
+                                  mode: LaunchMode.externalApplication);
+                            },
+                          ),
+                          ListTile(
+                            title: const Text('Legal disclaimer'),
+                            subtitle: const Text(
+                                'SmartIPTV Pro+ does not provide or host any content.'),
+                            trailing: const Icon(Icons.info_outline),
+                            onTap: () async {
+                              await showDialog(
+                                context: context,
+                                builder: (_) => const AlertDialog(
+                                  title: Text('Legal disclaimer'),
+                                  content: Text(
+                                      'SmartIPTV Pro+ does not provide or host any content. You must supply your own playlists or Xtream credentials. You are solely responsible for the content you access and stream.'),
+                                ),
+                              );
+                            },
+                          ),
+                          ListTile(
+                            title: const Text('Licenses'),
+                            trailing: const Icon(Icons.description),
+                            onTap: () => showLicensePage(
+                              context: context,
+                              applicationName: 'SmartIPTV Pro+',
                             ),
                           ),
                           const Divider(),

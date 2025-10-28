@@ -77,12 +77,14 @@ class XtreamEpisode {
 
 class XtreamEpisodeInfo {
   final String? movieImage;
+  final String? plot;
 
-  XtreamEpisodeInfo({this.movieImage});
+  XtreamEpisodeInfo({this.movieImage, this.plot});
 
   factory XtreamEpisodeInfo.fromJson(Map<String, dynamic> json) {
     return XtreamEpisodeInfo(
       movieImage: json['movie_image'],
+      plot: json['plot'],
     );
   }
 }

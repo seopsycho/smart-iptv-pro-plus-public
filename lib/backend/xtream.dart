@@ -13,6 +13,7 @@ const String getLiveStreams = "get_live_streams";
 const String getVods = "get_vod_streams";
 const String getSeries = "get_series";
 const String getSeriesInfo = "get_series_info";
+const String getVodInfo = "get_vod_info";
 const String getSeriesCategories = "get_series_categories";
 const String getLiveStreamCategories = "get_live_categories";
 const String getVodCategories = "get_vod_categories";
@@ -204,11 +205,12 @@ Future<void> getEpisodes(Channel channel) async {
           getSeriesInfo, source, {'series_id': seriesId.toString()}))
       .episodes;
   episodes.sort((a, b) {
-    int seasonComparison = a.season.compareTo(b.season);
-    if (seasonComparison != 0) {
-      return seasonComparison;
-    }
-    return a.episodeNum.compareTo(b.episodeNum);
+    final sa = int.tryParse(a.season) ?? 0;
+    final sb = int.tryParse(b.season) ?? 0;
+    if (sa != sb) return sa.compareTo(sb);
+    final ea = int.tryParse(a.episodeNum) ?? 0;
+    final eb = int.tryParse(b.episodeNum) ?? 0;
+    return ea.compareTo(eb);
   });
   for (var episode in episodes) {
     try {
@@ -226,6 +228,7 @@ Channel episodeToChannel(XtreamEpisode episode, Source source, int seriesId) {
       name: episode.title.trim(),
       sourceId: source.id!,
       favorite: false,
+      streamId: int.tryParse(episode.id),
       url: getUrl(
           episode.id, source, MediaType.serie, episode.containerExtension),
       seriesId: seriesId);

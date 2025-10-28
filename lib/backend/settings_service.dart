@@ -40,7 +40,10 @@ class SettingsService {
     if (series != null) {
       settings.showSeries = int.parse(series) == 1;
     }
-    final tmdb = settingsMap[tmdbApiKey] ?? dotenv.dotenv.env['TMDB_API_KEY'];
+    final tmdbFromEnv = dotenv.dotenv.isInitialized
+        ? dotenv.dotenv.env['TMDB_API_KEY']
+        : null;
+    final tmdb = settingsMap[tmdbApiKey] ?? tmdbFromEnv;
     if (tmdb != null && tmdb.isNotEmpty) {
       settings.tmdbApiKey = tmdb;
     }

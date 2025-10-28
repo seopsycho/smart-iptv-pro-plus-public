@@ -19,13 +19,29 @@ class Sql {
   static Future<void> commitWrite(
       List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
           commits) async {
-    var db = await DbFactory.db;
     Map<String, String> memory = {};
-    await db.writeTransaction((tx) async {
-      for (var commit in commits) {
-        await commit(tx, memory);
+    Future<void> _run() async {
+      final db = await DbFactory.db;
+      await db.writeTransaction((tx) async {
+        for (var commit in commits) {
+          await commit(tx, memory);
+        }
+      });
+    }
+    bool retried = false;
+    try {
+      await _run();
+    } catch (e) {
+      // If the underlying sqlite isolate was closed (e.g. hot restart), reopen and retry once
+      final msg = e.toString();
+      if (!retried && (msg.contains('ClosedException') || msg.contains('database is closed'))) {
+        retried = true;
+        DbFactory.reset();
+        await _run();
+      } else {
+        rethrow;
       }
-    });
+    }
   }
 
   static Future<void> Function(SqliteWriteContext, Map<String, String> memory)
@@ -104,6 +120,20 @@ class Sql {
     return results.map(rowToChannel).toList();
   }
 
+  static Future<List<Channel>> getRecentlyAddedByMediaType(
+      List<int> sourceIds, MediaType mediaType, int limit) async {
+    var db = await DbFactory.db;
+    var results = await db.getAll('''
+      SELECT * FROM channels
+      WHERE url IS NOT NULL
+        AND media_type = ?
+        AND source_id IN (${generatePlaceholders(sourceIds.length)})
+      ORDER BY id DESC
+      LIMIT ?
+    ''', [mediaType.index, ...sourceIds, limit]);
+    return results.map(rowToChannel).toList();
+  }
+
   static Future<List<Channel>> getFavoritesByMediaTypes(
       List<int> sourceIds, List<MediaType> mediaTypes, int limit) async {
     var db = await DbFactory.db;
@@ -126,19 +156,24 @@ class Sql {
       var sourceId = int.parse(memory['sourceId']!);
       await tx.execute('''
       INSERT INTO groups (name, image, source_id, media_type)
-      SELECT group_name, image, ?, media_type
+      SELECT group_name, MAX(image), ?, media_type
       FROM channels
       WHERE source_id = ?
-      GROUP BY group_name;
-      ON CONFLICT(name, source_id)  
-      DO UPDATE SET
-          media_type = excluded.media_type;
+      GROUP BY group_name, media_type
+      ON CONFLICT(name, source_id) DO UPDATE SET
+          media_type = excluded.media_type,
+          image = COALESCE(excluded.image, groups.image);
     ''', [sourceId, sourceId]);
       await tx.execute('''
       UPDATE channels
-      SET group_id = (SELECT id FROM groups WHERE groups.name = channels.group_name LIMIT 1);
+      SET group_id = (
+        SELECT id FROM groups 
+        WHERE groups.name = channels.group_name 
+          AND groups.source_id = channels.source_id
+        LIMIT 1
+      )
       WHERE source_id = ?;
-    ''');
+    ''', [sourceId]);
     };
   }
 
@@ -264,6 +299,7 @@ class Sql {
       favorite: row.columnAt(7) == 1,
       seriesId: row.columnAt(8),
       groupId: row.columnAt(9),
+      streamId: row.columnAt(10),
     );
   }
 
@@ -281,13 +317,15 @@ class Sql {
     var query = filters.query ?? "";
     var keywords = filters.useKeywords
         ? query.split(" ").map((f) => "%$f%").toList()
-        : ["%$query%"];
+        : ["%$query%"]; 
     var mediaTypes = filters.mediaTypes!.map((x) => x.index);
     var sqlQuery = '''
         SELECT * FROM groups 
         WHERE (${getKeywordsSql(keywords.length)})
         AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
         AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+        AND (hidden = 0 OR hidden IS NULL)
+        ORDER BY (position IS NULL) ASC, position ASC, name ASC
         LIMIT ?, ?
     ''';
     List<Object> params = [];
@@ -296,6 +334,82 @@ class Sql {
     params.addAll(filters.sourceIds!);
     params.add(offset);
     params.add(pageSize);
+    var results = await db.getAll(sqlQuery, params);
+    return results.map(groupChannelToRow).toList();
+  }
+
+  static Future<List<Channel>> searchGroupIncludeHidden(Filters filters) async {
+    var db = await DbFactory.db;
+    var offset = filters.page * pageSize - pageSize;
+    var query = filters.query ?? "";
+    var keywords = filters.useKeywords
+        ? query.split(" ").map((f) => "%$f%").toList()
+        : ["%$query%"]; 
+    var mediaTypes = filters.mediaTypes!.map((x) => x.index);
+    var sqlQuery = '''
+        SELECT * FROM groups 
+        WHERE (${getKeywordsSql(keywords.length)})
+        AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
+        AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+        ORDER BY (position IS NULL) ASC, position ASC, name ASC
+        LIMIT ?, ?
+    ''';
+    List<Object> params = [];
+    params.addAll(keywords);
+    params.addAll(mediaTypes);
+    params.addAll(filters.sourceIds!);
+    params.add(offset);
+    params.add(pageSize);
+    var results = await db.getAll(sqlQuery, params);
+    return results.map(groupChannelToRow).toList();
+  }
+
+  static Future<void> setGroupHidden(int groupId, bool hidden) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      UPDATE groups
+      SET hidden = ?
+      WHERE id = ?
+    ''', [hidden ? 1 : 0, groupId]);
+  }
+
+  static Future<void> reorderGroups(List<int> ids) async {
+    var db = await DbFactory.db;
+    await db.writeTransaction((tx) async {
+      int pos = 1;
+      for (final id in ids) {
+        await tx.execute('''
+          UPDATE groups
+          SET position = ?
+          WHERE id = ?
+        ''', [pos, id]);
+        pos++;
+      }
+    });
+  }
+
+  static Future<bool> getGroupHidden(int groupId) async {
+    var db = await DbFactory.db;
+    final row = await db.getOptional('''
+      SELECT hidden FROM groups WHERE id = ?
+    ''', [groupId]);
+    if (row == null) return false;
+    final val = row.columnAt(0);
+    if (val == null) return false;
+    return val == 1;
+  }
+
+  static Future<List<Channel>> getAllGroupsByMediaTypes(
+      List<int> sourceIds, List<MediaType> mediaTypes) async {
+    var db = await DbFactory.db;
+    var sqlQuery = '''
+        SELECT * FROM groups 
+        WHERE (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
+        AND source_id IN (${generatePlaceholders(sourceIds.length)})
+        AND (hidden = 0 OR hidden IS NULL)
+        ORDER BY (position IS NULL) ASC, position ASC, name ASC
+    ''';
+    List<Object> params = [...mediaTypes.map((m) => m.index), ...sourceIds];
     var results = await db.getAll(sqlQuery, params);
     return results.map(groupChannelToRow).toList();
   }

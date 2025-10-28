@@ -9,7 +9,8 @@ import 'package:open_tv/setup.dart';
 class Onboarding extends StatefulWidget {
   final bool skipSetup;
   final Settings settings;
-  const Onboarding({super.key, required this.skipSetup, required this.settings});
+  const Onboarding(
+      {super.key, required this.skipSetup, required this.settings});
 
   @override
   State<Onboarding> createState() => _OnboardingState();
@@ -29,7 +30,8 @@ class _OnboardingState extends State<Onboarding> {
                     firstLaunch: true,
                     refresh: widget.settings.refreshOnStart,
                     home: HomeManager(
-                        filters: Filters(viewType: widget.settings.defaultView)),
+                        filters:
+                            Filters(viewType: widget.settings.defaultView)),
                   )),
           (route) => false);
     } else {
@@ -48,9 +50,13 @@ class _OnboardingState extends State<Onboarding> {
         children: [
           Icon(icon, size: 100),
           const SizedBox(height: 24),
-          Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          Text(title,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center),
           const SizedBox(height: 12),
-          Text(subtitle, style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
+          Text(subtitle,
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center),
         ],
       ),
     );
@@ -60,11 +66,7 @@ class _OnboardingState extends State<Onboarding> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        actions: [
-          TextButton(
-              onPressed: _finish,
-              child: const Text("Skip"))
-        ],
+        actions: [TextButton(onPressed: _finish, child: const Text("Skip"))],
       ),
       body: SafeArea(
         child: Column(
@@ -74,9 +76,12 @@ class _OnboardingState extends State<Onboarding> {
                 controller: _controller,
                 onPageChanged: (i) => setState(() => _index = i),
                 children: [
-                  _slide(Icons.tv, "Welcome to Your IPTV App", "Lorem ipsum dolor sit amet, consectetur adipiscing elit."),
-                  _slide(Icons.movie, "Movies and Series", "Lorem ipsum dolor sit amet, consectetur adipiscing elit."),
-                  _slide(Icons.play_circle_fill, "Easy Playback", "Lorem ipsum dolor sit amet, consectetur adipiscing elit."),
+                  _slide(Icons.info, "Legal Disclaimer",
+                      "SmartIPTV Pro+ does not provide or host any content. You must supply your own playlists or Xtream credentials. You are solely responsible for the content you access and stream."),
+                  _slide(Icons.movie, "Movies and Series",
+                      "Lorem ipsum dolor sit amet, consectetur adipiscing elit."),
+                  _slide(Icons.play_circle_fill, "Easy Playback",
+                      "Lorem ipsum dolor sit amet, consectetur adipiscing elit."),
                 ],
               ),
             ),
@@ -87,10 +92,13 @@ class _OnboardingState extends State<Onboarding> {
                   (i) => Container(
                         width: 8,
                         height: 8,
-                        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 16),
                         decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: _index == i ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outlineVariant),
+                            color: _index == i
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.outlineVariant),
                       )),
             ),
             Padding(
@@ -100,7 +108,9 @@ class _OnboardingState extends State<Onboarding> {
                 child: ElevatedButton(
                     onPressed: () {
                       if (_index < 2) {
-                        _controller.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                        _controller.nextPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut);
                       } else {
                         _finish();
                       }
