@@ -1,4 +1,4 @@
-import 'package:open_tv/models/source_type.dart';
+import 'package:smart_iptv_pro/models/source_type.dart';
 
 class Source {
   int? id;

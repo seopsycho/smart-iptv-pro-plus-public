@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/models/filters.dart';
-import 'package:open_tv/models/media_type.dart';
-import 'package:open_tv/models/view_type.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/models/channel.dart';
+import 'package:smart_iptv_pro/models/filters.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
+import 'package:smart_iptv_pro/models/view_type.dart';
 
 class ManageCategoriesPage extends StatefulWidget {
   final List<int> sourceIds;

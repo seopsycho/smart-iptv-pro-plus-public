@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:loader_overlay/loader_overlay.dart';
-import 'package:open_tv/models/result.dart';
+import 'package:smart_iptv_pro/models/result.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class Error {

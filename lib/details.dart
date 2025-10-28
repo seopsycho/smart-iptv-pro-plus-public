@@ -1,20 +1,20 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_feather_icons/flutter_feather_icons.dart';
-import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/services/tmdb_service.dart';
-import 'package:open_tv/backend/omdb.dart';
-import 'package:open_tv/backend/xtream.dart';
-import 'package:open_tv/error.dart';
-import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/models/filters.dart';
-import 'package:open_tv/models/media_type.dart';
-import 'package:open_tv/models/view_type.dart';
-import 'package:open_tv/models/tmdb_item.dart';
-import 'package:open_tv/models/xtream_types.dart';
-import 'package:open_tv/models/source.dart';
-import 'package:open_tv/player.dart';
-import 'package:open_tv/backend/settings_service.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/services/tmdb_service.dart';
+import 'package:smart_iptv_pro/backend/omdb.dart';
+import 'package:smart_iptv_pro/backend/xtream.dart';
+import 'package:smart_iptv_pro/error.dart';
+import 'package:smart_iptv_pro/models/channel.dart';
+import 'package:smart_iptv_pro/models/filters.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
+import 'package:smart_iptv_pro/models/view_type.dart';
+import 'package:smart_iptv_pro/models/tmdb_item.dart';
+import 'package:smart_iptv_pro/models/xtream_types.dart';
+import 'package:smart_iptv_pro/models/source.dart';
+import 'package:smart_iptv_pro/player.dart';
+import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class DetailsPage extends StatefulWidget {

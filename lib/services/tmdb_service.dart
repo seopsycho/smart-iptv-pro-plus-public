@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:collection';
 import 'package:http/http.dart' as http;
-import 'package:open_tv/models/tmdb_item.dart';
+import 'package:smart_iptv_pro/models/tmdb_item.dart';
 
 class TmdbService {
   final String apiKey;

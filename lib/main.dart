@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
-import 'package:open_tv/backend/settings_service.dart';
-import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/home.dart';
-import 'package:open_tv/models/filters.dart';
-import 'package:open_tv/models/home_manager.dart';
-import 'package:open_tv/models/settings.dart';
-import 'package:open_tv/setup.dart';
-import 'package:open_tv/onboarding.dart';
+import 'package:smart_iptv_pro/backend/settings_service.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/home.dart';
+import 'package:smart_iptv_pro/models/filters.dart';
+import 'package:smart_iptv_pro/models/home_manager.dart';
+import 'package:smart_iptv_pro/models/settings.dart';
+import 'package:smart_iptv_pro/setup.dart';
+import 'package:smart_iptv_pro/onboarding.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

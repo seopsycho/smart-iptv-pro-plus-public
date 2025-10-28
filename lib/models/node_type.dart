@@ -1,5 +1,5 @@
-import 'package:open_tv/models/exceptions/invalid_value_exception.dart';
-import 'package:open_tv/models/media_type.dart';
+import 'package:smart_iptv_pro/models/exceptions/invalid_value_exception.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
 
 enum NodeType { category, series }
 

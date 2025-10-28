@@ -1,15 +1,15 @@
 import 'dart:collection';
 
-import 'package:open_tv/backend/db_factory.dart';
-import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/models/channel_http_headers.dart';
-import 'package:open_tv/models/channel_preserve.dart';
-import 'package:open_tv/models/filters.dart';
-import 'package:open_tv/models/id_data.dart';
-import 'package:open_tv/models/media_type.dart';
-import 'package:open_tv/models/source.dart';
-import 'package:open_tv/models/source_type.dart';
-import 'package:open_tv/models/view_type.dart';
+import 'package:smart_iptv_pro/backend/db_factory.dart';
+import 'package:smart_iptv_pro/models/channel.dart';
+import 'package:smart_iptv_pro/models/channel_http_headers.dart';
+import 'package:smart_iptv_pro/models/channel_preserve.dart';
+import 'package:smart_iptv_pro/models/filters.dart';
+import 'package:smart_iptv_pro/models/id_data.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
+import 'package:smart_iptv_pro/models/source.dart';
+import 'package:smart_iptv_pro/models/source_type.dart';
+import 'package:smart_iptv_pro/models/view_type.dart';
 import 'package:sqlite_async/sqlite3.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 

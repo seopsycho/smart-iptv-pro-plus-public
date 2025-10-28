@@ -1,8 +1,8 @@
 import 'dart:collection';
 
-import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/models/settings.dart';
-import 'package:open_tv/models/view_type.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/models/settings.dart';
+import 'package:smart_iptv_pro/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
 

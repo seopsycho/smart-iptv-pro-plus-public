@@ -1,5 +1,5 @@
-import 'package:open_tv/models/media_type.dart';
-import 'package:open_tv/models/view_type.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
+import 'package:smart_iptv_pro/models/view_type.dart';
 
 class Filters {
   String? query;

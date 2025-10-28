@@ -1,4 +1,4 @@
-import 'package:open_tv/backend/utils.dart';
+import 'package:smart_iptv_pro/backend/utils.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 
 class DbFactory {

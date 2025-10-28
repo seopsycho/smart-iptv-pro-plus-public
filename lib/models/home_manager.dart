@@ -1,6 +1,6 @@
-import 'package:open_tv/models/filters.dart';
-import 'package:open_tv/models/node.dart';
-import 'package:open_tv/models/view_type.dart';
+import 'package:smart_iptv_pro/models/filters.dart';
+import 'package:smart_iptv_pro/models/node.dart';
+import 'package:smart_iptv_pro/models/view_type.dart';
 
 class HomeManager {
   final Filters filters;

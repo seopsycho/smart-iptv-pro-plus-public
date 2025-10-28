@@ -1,4 +1,4 @@
-import 'package:open_tv/models/media_type.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
 
 class Channel {
   int? id;

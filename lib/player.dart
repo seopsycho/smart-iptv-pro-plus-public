@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/models/id_data.dart';
-import 'package:open_tv/models/media_type.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/models/channel.dart';
+import 'package:smart_iptv_pro/models/id_data.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart' as mkvideo;
-import 'package:open_tv/select_dialog.dart';
+import 'package:smart_iptv_pro/select_dialog.dart';
 
 class Player extends StatefulWidget {
   final Channel channel;

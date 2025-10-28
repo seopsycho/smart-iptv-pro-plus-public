@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
-import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/models/source.dart';
-import 'package:open_tv/models/source_type.dart';
-import 'package:open_tv/error.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/models/source.dart';
+import 'package:smart_iptv_pro/models/source_type.dart';
+import 'package:smart_iptv_pro/error.dart';
 
 class EditDialog extends StatefulWidget {
   final Source source;

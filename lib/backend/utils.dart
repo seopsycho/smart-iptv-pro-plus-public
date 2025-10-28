@@ -1,10 +1,10 @@
 import 'dart:io';
-import 'package:open_tv/backend/m3u.dart';
-import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/backend/xtream.dart';
-import 'package:open_tv/memory.dart';
-import 'package:open_tv/models/source.dart';
-import 'package:open_tv/models/source_type.dart';
+import 'package:smart_iptv_pro/backend/m3u.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/backend/xtream.dart';
+import 'package:smart_iptv_pro/memory.dart';
+import 'package:smart_iptv_pro/models/source.dart';
+import 'package:smart_iptv_pro/models/source_type.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 

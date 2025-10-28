@@ -1,15 +1,15 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:open_tv/backend/sql.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
 // removed: xtream.dart, memory.dart (no longer used here)
-import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/error.dart';
-import 'package:open_tv/models/media_type.dart';
-import 'package:open_tv/models/node.dart';
-import 'package:open_tv/models/node_type.dart';
+import 'package:smart_iptv_pro/models/channel.dart';
+import 'package:smart_iptv_pro/error.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
+import 'package:smart_iptv_pro/models/node.dart';
+import 'package:smart_iptv_pro/models/node_type.dart';
 // removed: player.dart (playback now initiated from DetailsPage)
-import 'package:open_tv/backend/omdb.dart';
-import 'package:open_tv/details.dart';
+import 'package:smart_iptv_pro/backend/omdb.dart';
+import 'package:smart_iptv_pro/details.dart';
 
 class ChannelTile extends StatefulWidget {
   final Channel channel;

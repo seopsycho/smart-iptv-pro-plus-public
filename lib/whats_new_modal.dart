@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:open_tv/backend/settings_service.dart';
+import 'package:smart_iptv_pro/backend/settings_service.dart';
 
 class WhatsNewModal extends StatelessWidget {
   final String version;

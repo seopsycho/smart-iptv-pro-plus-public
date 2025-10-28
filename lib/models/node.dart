@@ -1,4 +1,4 @@
-import 'package:open_tv/models/node_type.dart';
+import 'package:smart_iptv_pro/models/node_type.dart';
 
 class Node {
   final int id;

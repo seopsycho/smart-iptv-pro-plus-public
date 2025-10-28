@@ -1,11 +1,11 @@
 import 'dart:convert';
 
-import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/models/channel_preserve.dart';
-import 'package:open_tv/models/media_type.dart';
-import 'package:open_tv/models/source.dart';
-import 'package:open_tv/models/xtream_types.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/models/channel.dart';
+import 'package:smart_iptv_pro/models/channel_preserve.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
+import 'package:smart_iptv_pro/models/source.dart';
+import 'package:smart_iptv_pro/models/xtream_types.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 import 'package:http/http.dart' as http;
 

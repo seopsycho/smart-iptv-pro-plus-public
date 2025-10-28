@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:open_tv/models/id_data.dart';
+import 'package:smart_iptv_pro/models/id_data.dart';
 
 class SelectDialog extends StatelessWidget {
   const SelectDialog(

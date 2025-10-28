@@ -1,5 +1,5 @@
-import 'package:open_tv/models/filters.dart';
-import 'package:open_tv/models/stack.dart';
+import 'package:smart_iptv_pro/models/filters.dart';
+import 'package:smart_iptv_pro/models/stack.dart';
 
 class Snapshot {
   final Stack stack;
