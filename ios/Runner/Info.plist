@@ -54,5 +54,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow SmartIPTV Pro+ to access your photo library to choose artwork for channels and playlists.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow SmartIPTV Pro+ to save artwork to your photo library when you export or save images.</string>
 </dict>
 </plist>

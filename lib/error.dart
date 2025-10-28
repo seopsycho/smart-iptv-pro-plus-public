@@ -57,7 +57,7 @@ class Error {
                                     child: const Text('Report issue'),
                                     onPressed: () async {
                                       final Uri url = Uri.parse(
-                                          'https://github.com/fredolx/fred-tv-mobile/issues/new?template=Blank+issue');
+                                          'https://iptv-front.vercel.app/support/');
                                       await launchUrl(url,
                                           mode: LaunchMode.externalApplication);
                                     },
