@@ -21,16 +21,19 @@ jobs:
       with:
         channel: 'stable'
 
+    - name: Install Flutter Dependencies
+      run: flutter pub get
+
     - name: Install CocoaPods
       run: |
-        cd ios
         sudo gem install cocoapods
         pod --version
+
+    - name: Install iOS Dependencies
+      run: |
+        cd ios
         pod install --repo-update
         cd ..
-
-    - name: Run Flutter pub get
-      run: flutter pub get
 
     - name: Build iOS
       run: |
