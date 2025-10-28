@@ -451,8 +451,11 @@ class _DetailsPageState extends State<DetailsPage> {
                   const SizedBox(width: 12),
                   TextButton.icon(
                       onPressed: _toggleFavorite,
-                      icon: Icon(_favorite ? FeatherIcons.heart : FeatherIcons.heart),
-                      label: Text(_favorite ? 'Favorited' : 'Add to favorites')),
+                      icon: Icon(
+                        FeatherIcons.heart,
+                        color: _favorite ? const Color(0xFFE50914) : null,
+                      ),
+                      label: Text(_favorite ? 'Added to watchlist' : 'Add to watchlist')),
                 ],
               ),
               const SizedBox(height: 12),

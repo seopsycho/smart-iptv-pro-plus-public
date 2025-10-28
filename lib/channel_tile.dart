@@ -51,9 +51,12 @@ class _ChannelTileState extends State<ChannelTile> {
       setState(() {
         widget.channel.favorite = !widget.channel.favorite;
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Added to favorites"),
-        duration: Duration(milliseconds: 500),
+      final msg = widget.channel.favorite
+          ? "Added to watchlist"
+          : "Removed from watchlist";
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        duration: const Duration(milliseconds: 500),
       ));
     }, context);
   }
@@ -134,26 +137,36 @@ class _ChannelTileState extends State<ChannelTile> {
                                   aspectRatio: (widget.channel.mediaType == MediaType.livestream)
                                       ? 16 / 9
                                       : 2 / 3,
-                                  child: ((widget.channel.image?.trim().isNotEmpty ?? false) || _omdbPoster != null)
-                                      ? CachedNetworkImage(
-                                          fit: BoxFit.cover,
-                                          errorWidget: (_, __, ___) =>
-                                              Image.asset("assets/icon.png"),
-                                          imageUrl: (widget.channel.image?.trim().isNotEmpty ?? false)
-                                              ? widget.channel.image!.trim()
-                                              : _omdbPoster!,
-                                        )
-                                      : (_omdbPoster != null
-                                          ? CachedNetworkImage(
-                                              fit: BoxFit.cover,
-                                              errorWidget: (_, __, ___) =>
-                                                  Image.asset("assets/icon.png"),
-                                              imageUrl: _omdbPoster!,
-                                            )
-                                          : Image.asset(
-                                              "assets/icon.png",
-                                              fit: BoxFit.cover,
-                                            ))))),
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: ((widget.channel.image?.trim().isNotEmpty ?? false) || _omdbPoster != null)
+                                            ? CachedNetworkImage(
+                                                fit: BoxFit.cover,
+                                                errorWidget: (_, __, ___) => Image.asset("assets/icon.png"),
+                                                imageUrl: (widget.channel.image?.trim().isNotEmpty ?? false)
+                                                    ? widget.channel.image!.trim()
+                                                    : _omdbPoster!,
+                                              )
+                                            : (_omdbPoster != null
+                                                ? CachedNetworkImage(
+                                                    fit: BoxFit.cover,
+                                                    errorWidget: (_, __, ___) => Image.asset("assets/icon.png"),
+                                                    imageUrl: _omdbPoster!,
+                                                  )
+                                                : Image.asset(
+                                                    "assets/icon.png",
+                                                    fit: BoxFit.cover,
+                                                  )),
+                                      ),
+                                      if (widget.channel.favorite)
+                                        const Positioned(
+                                          top: 6,
+                                          right: 6,
+                                          child: Icon(Icons.favorite, color: Color(0xFFE50914)),
+                                        ),
+                                    ],
+                                  )))),
                       const SizedBox(width: 12),
                       Expanded(
                           flex: 8,
