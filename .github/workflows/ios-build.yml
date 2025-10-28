@@ -1,0 +1,38 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    environment: production
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+
+    - name: Install CocoaPods
+      run: |
+        cd ios
+        sudo gem install cocoapods
+        pod --version
+        pod install --repo-update
+        cd ..
+
+    - name: Run Flutter pub get
+      run: flutter pub get
+
+    - name: Build iOS
+      run: |
+        cd ios
+        xcodebuild -workspace Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
