@@ -47,6 +47,8 @@ class _DetailsPageState extends State<DetailsPage> {
   DownloadItem? _download;
   bool _dlLoading = false;
   Timer? _dlTimer;
+  Map<int, DownloadItem> _downloadsById = {};
+  String? _sourceName;
 
   @override
   void initState() {
@@ -94,25 +96,29 @@ class _DetailsPageState extends State<DetailsPage> {
   }
 
   void _ensureDlTicker() {
-    final active = (_download != null && _download!.status == 0);
-    if (active && _dlTimer == null) {
-      _dlTimer = Timer.periodic(const Duration(milliseconds: 800), (_) async {
-        if (widget.channel.id == null) return;
+    if (_dlTimer != null) return;
+    _dlTimer = Timer.periodic(const Duration(milliseconds: 800), (_) async {
+      if (widget.channel.id != null) {
         final d = await Sql.getDownload(widget.channel.id!);
-        if (!mounted) return;
-        setState(() {
-          _download = d;
-        });
-        if (d == null || d.status != 0) {
-          _dlTimer?.cancel();
-          _dlTimer = null;
+        if (mounted) {
+          setState(() => _download = d);
         }
-      });
-    }
-    if (!active && _dlTimer != null) {
-      _dlTimer?.cancel();
-      _dlTimer = null;
-    }
+      }
+      final all = await Sql.getAllDownloads();
+      if (mounted) {
+        setState(() {
+          _downloadsById = {
+            for (final di in all)
+              if (di.channel.id != null) di.channel.id!: di,
+          };
+        });
+      }
+      final anyActive = all.any((x) => x.status == 0);
+      if (!anyActive) {
+        _dlTimer?.cancel();
+        _dlTimer = null;
+      }
+    });
   }
 
   Future<void> _downloadSeason() async {
@@ -188,6 +194,7 @@ class _DetailsPageState extends State<DetailsPage> {
         final src = await Sql.getSourceFromId(widget.channel.sourceId);
         src.urlOrigin = Uri.parse(src.url!).origin;
         _source = src;
+        if (mounted) setState(() => _sourceName = src.name);
         if (widget.channel.streamId != null && widget.channel.streamId! > 0) {
           final v = await getXtreamHttpData(getVodInfo, src, {
             'vod_id': widget.channel.streamId.toString(),
@@ -272,6 +279,7 @@ class _DetailsPageState extends State<DetailsPage> {
     final source = await Sql.getSourceFromId(widget.channel.sourceId);
     source.urlOrigin = Uri.parse(source.url!).origin;
     _source = source;
+    if (mounted) setState(() => _sourceName = source.name);
     final info = await getXtreamHttpData(getSeriesInfo, source, {
       'series_id': sid.toString(),
     });
@@ -522,13 +530,14 @@ class _DetailsPageState extends State<DetailsPage> {
                   ),
                 ),
               const SizedBox(height: 16),
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
                 children: [
                   ElevatedButton.icon(
                       onPressed: () => _play(widget.channel),
                       icon: const Icon(FeatherIcons.play),
                       label: const Text('Play')),
-                  const SizedBox(width: 12),
                   if (trailerKey != null)
                     OutlinedButton.icon(
                         onPressed: () async {
@@ -537,7 +546,6 @@ class _DetailsPageState extends State<DetailsPage> {
                         },
                         icon: const Icon(FeatherIcons.film),
                         label: const Text('Trailer')),
-                  const SizedBox(width: 12),
                   if (widget.channel.mediaType == MediaType.movie)
                     (() {
                       if (_dlLoading) {
@@ -577,7 +585,6 @@ class _DetailsPageState extends State<DetailsPage> {
                         label: const Text('Download'),
                       );
                     }()),
-                  const SizedBox(width: 12),
                   TextButton.icon(
                       onPressed: _toggleFavorite,
                       icon: Icon(
@@ -606,6 +613,9 @@ class _DetailsPageState extends State<DetailsPage> {
                   ]
                 ],
               ),
+              const SizedBox(height: 8),
+              if (_sourceName != null)
+                Text('Playlist: ${_sourceName!}', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 10),
               if (genres.isNotEmpty)
                 Wrap(
@@ -716,16 +726,30 @@ class _DetailsPageState extends State<DetailsPage> {
                                   }
                                 },
                               ),
-                              if (ch != null)
-                                IconButton(
-                                  icon: const Icon(FeatherIcons.download),
-                                  onPressed: () async {
-                                    await DownloadsService.startDownload(ch);
-                                    if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Download started')));
-                                  },
-                                ),
+                              if (ch != null) ...[
+                                () {
+                                  final di = _downloadsById[ch.id!];
+                                  if (di != null && di.status == 0) {
+                                    return const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    );
+                                  }
+                                  if (di != null && di.completed) {
+                                    return const Icon(FeatherIcons.check);
+                                  }
+                                  return IconButton(
+                                    icon: const Icon(FeatherIcons.download),
+                                    onPressed: () async {
+                                      await DownloadsService.startDownload(ch);
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Download started')));
+                                    },
+                                  );
+                                }(),
+                              ],
                             ],
                           ),
                         );

@@ -43,11 +43,26 @@ class DownloadsService {
         bytes: 0,
         totalBytes: 0,
       );
-      resp = await client.send(req);
+      // Fail fast if the server is not responding
+      resp = await client.send(req).timeout(const Duration(seconds: 20));
       final total = resp.contentLength ?? 0;
       final sink = file.openWrite();
       int received = 0;
-      final StreamSubscription<List<int>> sub = resp.stream.listen(
+      final completer = Completer<void>();
+      const inactivity = Duration(seconds: 30);
+      Timer? watchdog;
+      late StreamSubscription<List<int>> sub;
+      void resetWatchdog() {
+        watchdog?.cancel();
+        watchdog = Timer(inactivity, () async {
+          try { await sub.cancel(); } catch (_) {}
+          try { await sink.flush(); } catch (_) {}
+          try { await sink.close(); } catch (_) {}
+          await Sql.updateDownloadStatus(channel.id!, 2);
+          if (!completer.isCompleted) completer.complete();
+        });
+      }
+      sub = resp.stream.listen(
         (chunk) async {
           received += chunk.length;
           sink.add(chunk);
@@ -56,21 +71,27 @@ class DownloadsService {
           } else {
             await Sql.updateDownloadProgress(channel.id!, received, 0);
           }
+          resetWatchdog();
         },
         onError: (e) async {
-          await sink.flush();
-          await sink.close();
+          try { watchdog?.cancel(); } catch (_) {}
+          try { await sink.flush(); } catch (_) {}
+          try { await sink.close(); } catch (_) {}
           await Sql.updateDownloadStatus(channel.id!, 2);
+          if (!completer.isCompleted) completer.complete();
         },
         onDone: () async {
-          await sink.flush();
-          await sink.close();
+          try { watchdog?.cancel(); } catch (_) {}
+          try { await sink.flush(); } catch (_) {}
+          try { await sink.close(); } catch (_) {}
           await Sql.updateDownloadProgress(channel.id!, received, total > 0 ? total : received);
           await Sql.updateDownloadStatus(channel.id!, 1);
+          if (!completer.isCompleted) completer.complete();
         },
         cancelOnError: true,
       );
-      await sub.asFuture();
+      resetWatchdog();
+      await completer.future;
     } catch (e) {
       await Sql.updateDownloadStatus(channel.id!, 2);
       rethrow;

@@ -26,6 +26,7 @@ class _PlayerState extends State<Player> {
   late final GlobalKey<VideoState> key = GlobalKey<VideoState>();
   bool exiting = false;
   bool fill = false;
+  String? _sourceName;
 
   @override
   void initState() {
@@ -35,9 +36,10 @@ class _PlayerState extends State<Player> {
   }
 
   Future<void> initAsync() async {
-    final headers = await Sql.getChannelHeaders(widget.channel.id!);
-    final seconds = widget.channel.mediaType == MediaType.movie
-        ? await Sql.getPosition(widget.channel.id!)
+    final id = widget.channel.id;
+    final headers = id != null ? await Sql.getChannelHeaders(id) : null;
+    final seconds = (id != null && widget.channel.mediaType == MediaType.movie)
+        ? await Sql.getPosition(id)
         : null;
     await player.open(mk.Media(widget.channel.url!,
         start: seconds != null ? Duration(seconds: seconds) : null,
@@ -48,6 +50,10 @@ class _PlayerState extends State<Player> {
                 if (headers.userAgent != null) "User-Agent": headers.userAgent!,
               }
             : null));
+    try {
+      final src = await Sql.getSourceFromId(widget.channel.sourceId);
+      if (mounted) setState(() => _sourceName = src.name);
+    } catch (_) {}
     await key.currentState?.enterFullscreen();
     player.setPlaylistMode(mk.PlaylistMode.single);
   }
@@ -123,7 +129,7 @@ class _PlayerState extends State<Player> {
   void onExit() async {
     if (exiting) return;
     exiting = true;
-    if (widget.channel.mediaType == MediaType.movie) {
+    if (widget.channel.mediaType == MediaType.movie && widget.channel.id != null) {
       Sql.setPosition(widget.channel.id!, player.state.position.inSeconds);
     }
     if (key.currentState!.isFullscreen()) {
@@ -151,7 +157,8 @@ class _PlayerState extends State<Player> {
 
   Future<void> castToDevice() async {
     try {
-      final headers = await Sql.getChannelHeaders(widget.channel.id!);
+      final id = widget.channel.id;
+      final headers = id != null ? await Sql.getChannelHeaders(id) : null;
       final position = widget.channel.mediaType == MediaType.movie
           ? player.state.position
           : Duration.zero;
@@ -196,7 +203,18 @@ class _PlayerState extends State<Player> {
             icon: const Icon(Icons.arrow_back, color: Colors.white, size: 32),
           ),
           const SizedBox(width: 10),
-          Text(widget.channel.name),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(widget.channel.name),
+              if (_sourceName != null)
+                Text(
+                  'Playlist: ${_sourceName!}',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Colors.white70),
+                ),
+            ],
+          ),
         ],
         bottomButtonBar: [
           IconButton(

@@ -10,6 +10,7 @@ import 'package:smart_iptv_pro/models/node_type.dart';
 // removed: player.dart (playback now initiated from DetailsPage)
 import 'package:smart_iptv_pro/backend/omdb.dart';
 import 'package:smart_iptv_pro/details.dart';
+import 'package:smart_iptv_pro/player.dart';
 
 class ChannelTile extends StatefulWidget {
   final Channel channel;
@@ -89,6 +90,19 @@ class _ChannelTileState extends State<ChannelTile> {
           id: widget.channel.id!,
           name: widget.channel.name,
           type: fromMediaType(widget.channel.mediaType)));
+      return;
+    }
+    if (widget.channel.mediaType == MediaType.livestream) {
+      if (widget.channel.id != null) {
+        await Sql.addToHistory(widget.channel.id!);
+      }
+      await Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => Player(
+                    channel: widget.channel,
+                  )));
+      if (mounted) setState(() {});
       return;
     }
     await Navigator.push(

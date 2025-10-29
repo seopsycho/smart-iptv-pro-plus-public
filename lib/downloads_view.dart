@@ -100,9 +100,12 @@ class _DownloadsViewState extends State<DownloadsView> {
         final di = items[index];
         final image = di.channel.image;
         final hasTotal = di.totalBytes > 0;
+        final isFailed = di.status == 2;
         final sub = di.completed
             ? 'Completed'
-            : (hasTotal ? '${((di.progress) * 100).toStringAsFixed(0)}%' : 'Downloading...');
+            : isFailed
+                ? 'Failed'
+                : (hasTotal ? '${((di.progress) * 100).toStringAsFixed(0)}%' : 'Downloading...');
         return ListTile(
           leading: ClipRRect(
             borderRadius: BorderRadius.circular(8),
@@ -127,7 +130,7 @@ class _DownloadsViewState extends State<DownloadsView> {
             children: [
               IconButton(
                 icon: const Icon(Icons.play_arrow),
-                onPressed: di.completed ? () => _play(di) : null,
+                onPressed: (!isFailed && di.completed) ? () => _play(di) : null,
               ),
               IconButton(
                 icon: const Icon(Icons.delete),

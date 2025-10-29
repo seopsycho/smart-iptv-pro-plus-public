@@ -15,6 +15,6 @@ class DownloadItem {
     required this.totalBytes,
   });
 
-  bool get completed => status == 1;
+  bool get completed => status == 1 || (totalBytes > 0 && bytes >= totalBytes);
   double get progress => totalBytes > 0 ? bytes / totalBytes : 0.0;
 }
