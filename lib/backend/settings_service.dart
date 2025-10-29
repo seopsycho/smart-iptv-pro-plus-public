@@ -17,6 +17,7 @@ const lastSeenVersion = "lastSeenVersion";
 const hasSeenOnboarding = "hasSeenOnboarding";
 const tmdbApiKey = "tmdbApiKey";
 const metadataProvider = "metadataProvider"; // 'omdb' or 'tmdb'
+const suppressDownloadWarning = "suppressDownloadWarning";
 
 class SettingsService {
   static Future<Settings> getSettings() async {
@@ -59,6 +60,10 @@ class SettingsService {
     if (provider != null && provider.isNotEmpty) {
       settings.metadataProvider = provider;
     }
+    final suppress = settingsMap[suppressDownloadWarning];
+    if (suppress != null && suppress.isNotEmpty) {
+      settings.suppressDownloadWarning = suppress == '1' || suppress.toLowerCase() == 'true';
+    }
     return settings;
   }
 
@@ -73,6 +78,7 @@ class SettingsService {
     settingsMap[tmdbApiKey] = settings.tmdbApiKey;
     settingsMap[tmdbApiKey] = settings.tmdbApiKey;
     settingsMap[metadataProvider] = settings.metadataProvider;
+    settingsMap[suppressDownloadWarning] = settings.suppressDownloadWarning ? '1' : '0';
     await Sql.updateSettings(settingsMap);
   }
 

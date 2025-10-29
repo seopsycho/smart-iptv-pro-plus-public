@@ -57,6 +57,7 @@ dependencies:
   shimmer: ^3.0.0
   flutter_feather_icons: ^2.0.0+1
   wakelock_plus: ^1.1.5
+  background_downloader: ^9.2.6
 
 dev_dependencies:
   flutter_test:

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
@@ -166,7 +167,8 @@ class _SettingsState extends State<SettingsView> {
                             ]
                           : ["Fetching Information"];
                       final completed = <String>{};
-                      late StateSetter setDialogState;
+                      StateSetter? setDialogState;
+                      final ready = Completer<void>();
 
                       final dialogFuture = showDialog(
                         context: context,
@@ -175,6 +177,7 @@ class _SettingsState extends State<SettingsView> {
                           return StatefulBuilder(
                             builder: (context, setState) {
                               setDialogState = setState;
+                              if (!ready.isCompleted) ready.complete();
                               return AlertDialog(
                                 title: const Text("Loading Playlist"),
                                 content: SizedBox(
@@ -208,17 +211,27 @@ class _SettingsState extends State<SettingsView> {
                         },
                       );
 
+                      await ready.future;
                       final result = await Error.tryAsyncNoLoading(() async {
-                        await Utils.processSource(
-                          source,
-                          true,
-                          (label, done) {
-                            if (done && steps.contains(label)) {
-                              completed.add(label);
-                              setDialogState(() {});
+                        try {
+                          await Utils.processSource(
+                            source,
+                            true,
+                            (label, done) {
+                              if (done && steps.contains(label)) {
+                                completed.add(label);
+                                setDialogState!(() {});
+                              }
+                            },
+                          );
+                        } finally {
+                          if (completed.length != steps.length) {
+                            for (final s in steps) {
+                              if (!completed.contains(s)) completed.add(s);
                             }
-                          },
-                        );
+                            setDialogState!(() {});
+                          }
+                        }
                       }, context, true, "Source has been refreshed successfully");
 
                       await dialogFuture;
@@ -548,7 +561,8 @@ class _SettingsState extends State<SettingsView> {
                                         List<String> steps = [];
                                         final completed = <String>{};
                                         bool allDone = false;
-                                        late StateSetter setDialogState;
+                                        StateSetter? setDialogState;
+                                        final ready = Completer<void>();
 
                                         final dialogFuture = showDialog(
                                           context: context,
@@ -557,6 +571,7 @@ class _SettingsState extends State<SettingsView> {
                                             return StatefulBuilder(
                                               builder: (context, setState) {
                                                 setDialogState = setState;
+                                                if (!ready.isCompleted) ready.complete();
                                                 return AlertDialog(
                                                   title: const Text("Loading Playlist"),
                                                   content: SizedBox(
@@ -595,32 +610,43 @@ class _SettingsState extends State<SettingsView> {
                                           },
                                         );
 
+                                        await ready.future;
                                         final result = await Error.tryAsyncNoLoading(() async {
-                                          for (final s in srcs) {
-                                            currentName = s.name;
-                                            steps = s.sourceType == SourceType.xtream
-                                                ? [
-                                                    "Checking server status",
-                                                    "Fetching live streaming categories",
-                                                    "Fetching live streaming Channels",
-                                                    "Fetching live movie categories",
-                                                    "Fetching live films",
-                                                    "Fetching live series categories",
-                                                    "Fetching live series",
-                                                    "Fetching Information",
-                                                  ]
-                                                : ["Fetching Information"];
-                                            completed.clear();
-                                            setDialogState(() {});
-                                            await Utils.processSource(s, true, (label, done) {
-                                              if (done && steps.contains(label)) {
-                                                completed.add(label);
-                                                setDialogState(() {});
+                                          try {
+                                            for (final s in srcs) {
+                                              currentName = s.name;
+                                              steps = s.sourceType == SourceType.xtream
+                                                  ? [
+                                                      "Checking server status",
+                                                      "Fetching live streaming categories",
+                                                      "Fetching live streaming Channels",
+                                                      "Fetching live movie categories",
+                                                      "Fetching live films",
+                                                      "Fetching live series categories",
+                                                      "Fetching live series",
+                                                      "Fetching Information",
+                                                    ]
+                                                  : ["Fetching Information"];
+                                              completed.clear();
+                                              setDialogState!(() {});
+                                              await Utils.processSource(s, true, (label, done) {
+                                                if (done && steps.contains(label)) {
+                                                  completed.add(label);
+                                                  setDialogState!(() {});
+                                                }
+                                              });
+                                            }
+                                            allDone = true;
+                                            setDialogState!(() {});
+                                          } finally {
+                                            allDone = true;
+                                            if (steps.isNotEmpty) {
+                                              for (final s in steps) {
+                                                if (!completed.contains(s)) completed.add(s);
                                               }
-                                            });
+                                            }
+                                            setDialogState!(() {});
                                           }
-                                          allDone = true;
-                                          setDialogState(() {});
                                         }, context, true, "Successfully refreshed all sources");
 
                                         await dialogFuture;

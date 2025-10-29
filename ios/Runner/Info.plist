@@ -71,5 +71,9 @@
 	<string>SmartIPTV Pro+ uses Bluetooth to help discover and connect to nearby Cast-enabled devices. We do not collect or store any Bluetooth data.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow SmartIPTV Pro+ to use the camera to capture artwork for channels and playlists.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 </dict>
 </plist>

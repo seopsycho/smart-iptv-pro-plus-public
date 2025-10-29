@@ -11,6 +11,7 @@ import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart' as mkvideo;
 import 'package:smart_iptv_pro/select_dialog.dart';
 import 'package:smart_iptv_pro/services/chromecast_service.dart';
+import 'package:smart_iptv_pro/chromecast_button.dart';
 
 class Player extends StatefulWidget {
   final Channel channel;
@@ -183,8 +184,12 @@ class _PlayerState extends State<Player> {
               : 'Failed to send to Cast device')));
     } catch (e) {
       if (!mounted) return;
+      String msg = 'Cast error: $e';
+      if (e is PlatformException && e.code == 'no_session') {
+        msg = 'No Cast device connected. Tap the Cast button to connect, then try again.';
+      }
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Cast error: $e')));
+          .showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
@@ -237,6 +242,8 @@ class _PlayerState extends State<Player> {
             onPressed: toggleZoom,
           ),
           SizedBox(width: 20),
+          ChromecastButton(width: 44, height: 44, tintColor: Colors.white),
+          SizedBox(width: 12),
           IconButton(
             tooltip: 'Cast',
             onPressed: castToDevice,

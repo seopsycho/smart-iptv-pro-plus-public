@@ -9,6 +9,7 @@ import 'package:smart_iptv_pro/models/home_manager.dart';
 import 'package:smart_iptv_pro/models/settings.dart';
 import 'package:smart_iptv_pro/setup.dart';
 import 'package:smart_iptv_pro/onboarding.dart';
+import 'package:smart_iptv_pro/services/downloads_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,7 @@ Future<void> main() async {
   final hasSources = await Sql.hasSources();
   final settings = await SettingsService.getSettings();
   final hasSeenOnboarding = await SettingsService.getHasSeenOnboarding();
+  try { await DownloadsService.init(); } catch (_) {}
   runApp(MyApp(
     skipSetup: hasSources,
     settings: settings,

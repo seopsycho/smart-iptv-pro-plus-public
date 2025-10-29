@@ -41,8 +41,8 @@ Future<void> processM3U(Source source, bool wipe, [String? path]) async {
   await for (var line in file) {
     final lineUpper = line.toUpperCase();
     if (lineUpper.startsWith("#EXTINF")) {
-      if (channelLine != null) {
-        commitChannel(channelLine, lastLine!, httpHeadersSet ? headers : null,
+      if (channelLine != null && lastLine != null && lastLine.trim().isNotEmpty) {
+        commitChannel(channelLine, lastLine, httpHeadersSet ? headers : null,
             statements);
       }
       channelLine = line;
@@ -58,7 +58,9 @@ Future<void> processM3U(Source source, bool wipe, [String? path]) async {
       lastLine = line;
     }
   }
-  commitChannel(channelLine!, lastLine!, headers, statements);
+  if (channelLine != null && lastLine != null && lastLine.trim().isNotEmpty) {
+    commitChannel(channelLine, lastLine, headers, statements);
+  }
   statements.add(Sql.updateGroups());
   if (preserve != null) {
     statements.add(Sql.restorePreserve(preserve));

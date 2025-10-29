@@ -10,6 +10,7 @@ class Settings {
   bool showSeries;
   String tmdbApiKey;
   String metadataProvider; // 'omdb' (default) or 'tmdb'
+  bool suppressDownloadWarning;
   Settings(
       {this.defaultView = ViewType.all,
       this.refreshIntervalHours = 72,
@@ -18,7 +19,8 @@ class Settings {
       this.showMovies = true,
       this.showSeries = true,
       this.tmdbApiKey = "",
-      this.metadataProvider = "omdb"});
+      this.metadataProvider = "omdb",
+      this.suppressDownloadWarning = false});
 
   List<MediaType> getMediaTypes() {
     return [

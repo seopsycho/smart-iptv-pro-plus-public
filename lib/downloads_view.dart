@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:smart_iptv_pro/image_cache_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
 import 'package:smart_iptv_pro/models/download_item.dart';
@@ -73,7 +74,7 @@ class _DownloadsViewState extends State<DownloadsView> {
         setState(() {
           items = list;
         });
-        if (!items.any((d) => d.status == 0)) {
+        if (!items.any((d) => d.status == 0 || d.status == 3)) {
           _timer?.cancel();
           _timer = null;
         }
@@ -120,6 +121,7 @@ class _DownloadsViewState extends State<DownloadsView> {
               child: (image?.trim().isNotEmpty ?? false)
                   ? CachedNetworkImage(
                       imageUrl: image!.trim(),
+                      cacheManager: ImageCacheManager.instance,
                       fit: BoxFit.cover,
                     )
                   : Container(
@@ -137,6 +139,17 @@ class _DownloadsViewState extends State<DownloadsView> {
                 icon: const Icon(Icons.play_arrow),
                 onPressed: di.completed ? () => _play(di) : null,
               ),
+              if (isFailed)
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Retry',
+                  onPressed: () async {
+                    await DownloadsService.startDownload(di.channel);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Retry started')));
+                  },
+                ),
               IconButton(
                 icon: const Icon(Icons.delete),
                 onPressed: () => _remove(di),

@@ -21,6 +21,7 @@ import 'package:smart_iptv_pro/settings_view.dart';
 import 'package:smart_iptv_pro/select_dialog.dart';
 import 'package:smart_iptv_pro/models/id_data.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:smart_iptv_pro/image_cache_manager.dart';
 import 'package:smart_iptv_pro/services/tmdb_service.dart';
 import 'package:smart_iptv_pro/models/tmdb_item.dart';
 import 'package:smart_iptv_pro/details.dart';
@@ -839,9 +840,10 @@ class _HomeState extends State<Home> {
                       Positioned.fill(
                         child: (c.image?.trim().isNotEmpty ?? false)
                             ? CachedNetworkImage(
-                                imageUrl: c.image!.trim(),
-                                fit: BoxFit.cover,
-                              )
+                              imageUrl: c.image!.trim(),
+                              cacheManager: ImageCacheManager.instance,
+                              fit: BoxFit.cover,
+                            )
                             : Container(
                                 color: Theme.of(context).colorScheme.surfaceContainer,
                                 child: const Icon(Icons.tv, size: 48),
@@ -893,9 +895,10 @@ class _HomeState extends State<Home> {
                   borderRadius: BorderRadius.circular(8),
                   child: (item.posterUrl != null)
                       ? CachedNetworkImage(
-                          imageUrl: item.posterUrl!,
-                          fit: BoxFit.cover,
-                        )
+                        imageUrl: item.posterUrl!,
+                        cacheManager: ImageCacheManager.instance,
+                        fit: BoxFit.cover,
+                      )
                       : Container(
                           color: Theme.of(context).colorScheme.surfaceContainer,
                           child: const Icon(Icons.local_movies, size: 48),

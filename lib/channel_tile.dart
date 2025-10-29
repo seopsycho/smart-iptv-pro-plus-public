@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:smart_iptv_pro/image_cache_manager.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
 // removed: xtream.dart, memory.dart (no longer used here)
 import 'package:smart_iptv_pro/models/channel.dart';
@@ -158,6 +159,7 @@ class _ChannelTileState extends State<ChannelTile> {
                                         child: ((widget.channel.image?.trim().isNotEmpty ?? false) || _omdbPoster != null)
                                             ? CachedNetworkImage(
                                                 fit: BoxFit.cover,
+                                                cacheManager: ImageCacheManager.instance,
                                                 errorWidget: (_, __, ___) => Image.asset("assets/icon.png"),
                                                 imageUrl: (widget.channel.image?.trim().isNotEmpty ?? false)
                                                     ? widget.channel.image!.trim()
@@ -166,6 +168,7 @@ class _ChannelTileState extends State<ChannelTile> {
                                             : (_omdbPoster != null
                                                 ? CachedNetworkImage(
                                                     fit: BoxFit.cover,
+                                                    cacheManager: ImageCacheManager.instance,
                                                     errorWidget: (_, __, ___) => Image.asset("assets/icon.png"),
                                                     imageUrl: _omdbPoster!,
                                                   )

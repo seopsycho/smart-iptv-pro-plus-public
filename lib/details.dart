@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:smart_iptv_pro/image_cache_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_feather_icons/flutter_feather_icons.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
@@ -49,6 +50,7 @@ class _DetailsPageState extends State<DetailsPage> {
   Timer? _dlTimer;
   Map<int, DownloadItem> _downloadsById = {};
   String? _sourceName;
+  StateSetter? _episodeSheetSetState;
 
   @override
   void initState() {
@@ -58,6 +60,40 @@ class _DetailsPageState extends State<DetailsPage> {
     _loadDetails();
     _loadEpisodesIfSeries();
     _loadDownload();
+  }
+
+  Future<void> _maybeShowDownloadWarning() async {
+    final settings = await SettingsService.getSettings();
+    if (settings.suppressDownloadWarning) return;
+    if (!mounted) return;
+    bool dontShowAgain = false;
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Keep screen on while downloading'),
+          content: const Text('Downloads can continue in the background, but to avoid issues with some providers, it\'s recommended to keep the screen awake while large downloads are active.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                dontShowAgain = true;
+                Navigator.of(ctx).pop();
+              },
+              child: const Text("Don't show again"),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+    if (dontShowAgain) {
+      settings.suppressDownloadWarning = true;
+      await SettingsService.updateSettings(settings);
+    }
   }
 
   Future<void> _loadDownload() async {
@@ -71,6 +107,7 @@ class _DetailsPageState extends State<DetailsPage> {
     if (widget.channel.id == null) return;
     setState(() => _dlLoading = true);
     try {
+      await _maybeShowDownloadWarning();
       await DownloadsService.startDownload(widget.channel);
       await _loadDownload();
       if (mounted) {
@@ -112,6 +149,8 @@ class _DetailsPageState extends State<DetailsPage> {
               if (di.channel.id != null) di.channel.id!: di,
           };
         });
+        // If episode picker is open, force its subtree to rebuild with latest map
+        _episodeSheetSetState?.call(() {});
       }
       final anyActive = all.any((x) => x.status == 0 || x.status == 3);
       if (!anyActive) {
@@ -130,6 +169,7 @@ class _DetailsPageState extends State<DetailsPage> {
         .cast<Channel>()
         .toList();
     if (channels.isEmpty) return;
+    await _maybeShowDownloadWarning();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
@@ -407,114 +447,151 @@ class _DetailsPageState extends State<DetailsPage> {
     if (_episodesBySeason.isEmpty) return;
     _selectedSeason ??= _episodesBySeason.keys.reduce((a, b) => a < b ? a : b);
     if (!mounted) return;
-    showModalBottomSheet(
+    final fut = showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  children: (_episodesBySeason.keys.toList()..sort())
-                      .map((s) => ChoiceChip(
-                            label: Text('Season $s'),
-                            selected: _selectedSeason == s,
-                            onSelected: (_) =>
-                                setState(() => _selectedSeason = s),
-                          ))
-                      .toList(),
-                ),
-                const SizedBox(height: 8),
-                if (_selectedSeason != null)
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: _episodesBySeason[_selectedSeason]!.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final xe = _episodesBySeason[_selectedSeason]![index];
-                        final sNum = int.tryParse(xe.season) ?? 0;
-                        final eNum = int.tryParse(xe.episodeNum) ?? 0;
-                        final prefix =
-                            'S${sNum.toString().padLeft(2, '0')}E${eNum.toString().padLeft(2, '0')}';
-                        final titleText = xe.title.trim().isEmpty
-                            ? prefix
-                            : '$prefix · ${xe.title.trim()}';
-                        final ch =
-                            _episodeByStreamId[int.tryParse(xe.id) ?? -1];
-                        final img = ch?.image ?? xe.info?.movieImage;
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: SizedBox(
-                              width: 100,
-                              height: 56,
-                              child: (img?.trim().isNotEmpty ?? false)
-                                  ? CachedNetworkImage(
-                                      imageUrl: img!.trim(), fit: BoxFit.cover)
-                                  : Container(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .surfaceContainer,
-                                      child: const Icon(FeatherIcons.image)),
+        return StatefulBuilder(builder: (ctx2, localSetState) {
+          _episodeSheetSetState = localSetState;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    children: (_episodesBySeason.keys.toList()..sort())
+                        .map((s) => ChoiceChip(
+                              label: Text('Season $s'),
+                              selected: _selectedSeason == s,
+                              onSelected: (_) => setState(() => _selectedSeason = s),
+                            ))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_selectedSeason != null)
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _episodesBySeason[_selectedSeason]!.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final xe = _episodesBySeason[_selectedSeason]![index];
+                          final sNum = int.tryParse(xe.season) ?? 0;
+                          final eNum = int.tryParse(xe.episodeNum) ?? 0;
+                          final prefix = 'S${sNum.toString().padLeft(2, '0')}E${eNum.toString().padLeft(2, '0')}';
+                          final titleText = xe.title.trim().isEmpty ? prefix : '$prefix · ${xe.title.trim()}';
+                          final ch = _episodeByStreamId[int.tryParse(xe.id) ?? -1];
+                          final img = ch?.image ?? xe.info?.movieImage;
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 100,
+                                height: 56,
+                                child: (img?.trim().isNotEmpty ?? false)
+                                    ? CachedNetworkImage(
+                                        imageUrl: img!.trim(),
+                                        cacheManager: ImageCacheManager.instance,
+                                        fit: BoxFit.cover)
+                                    : Container(color: Theme.of(context).colorScheme.surfaceContainer, child: const Icon(FeatherIcons.image)),
+                              ),
                             ),
-                          ),
-                          title: Text(titleText,
-                              style: Theme.of(context).textTheme.titleSmall),
-                          subtitle: (xe.info?.plot != null &&
-                                  xe.info!.plot!.trim().isNotEmpty)
-                              ? Text(xe.info!.plot!,
-                                  maxLines: 2, overflow: TextOverflow.ellipsis)
-                              : null,
-                          trailing: IconButton(
-                            icon: const Icon(FeatherIcons.play),
-                            onPressed: () async {
-                              Navigator.of(context).pop();
-                              if (ch != null) {
-                                await _play(ch);
-                              } else if (_source != null) {
-                                final url = getUrl(xe.id, _source!,
-                                    MediaType.serie, xe.containerExtension);
-                                final epChannel = Channel(
-                                  name: xe.title.trim().isEmpty
-                                      ? 'Episode ${eNum}'
-                                      : xe.title.trim(),
-                                  mediaType: MediaType.movie,
-                                  sourceId: widget.channel.sourceId,
-                                  favorite: false,
-                                  image: img,
-                                  url: url,
-                                  seriesId:
-                                      int.tryParse(widget.channel.url ?? ''),
-                                  streamId: int.tryParse(xe.id),
-                                );
-                                Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) => Player(
-                                              channel: epChannel,
-                                            )));
-                              }
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                  )
-              ],
+                            title: Text(titleText, style: Theme.of(context).textTheme.titleSmall),
+                            subtitle: (xe.info?.plot != null && xe.info!.plot!.trim().isNotEmpty)
+                                ? Text(xe.info!.plot!, maxLines: 2, overflow: TextOverflow.ellipsis)
+                                : null,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(FeatherIcons.play),
+                                  onPressed: () async {
+                                    Navigator.of(context).pop();
+                                    if (ch != null) {
+                                      await _play(ch);
+                                    } else if (_source != null) {
+                                      final url = getUrl(xe.id, _source!, MediaType.serie, xe.containerExtension);
+                                      final epChannel = Channel(
+                                        name: xe.title.trim().isEmpty ? 'Episode ${eNum}' : xe.title.trim(),
+                                        mediaType: MediaType.movie,
+                                        sourceId: widget.channel.sourceId,
+                                        favorite: false,
+                                        image: img,
+                                        url: url,
+                                        seriesId: int.tryParse(widget.channel.url ?? ''),
+                                        streamId: int.tryParse(xe.id),
+                                      );
+                                      Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (_) => Player(
+                                                    channel: epChannel,
+                                                  )));
+                                    }
+                                  },
+                                ),
+                                if (ch != null) ...[
+                                  () {
+                                    final di = _downloadsById[ch.id!];
+                                    if (di != null && di.status == 0) {
+                                      return const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      );
+                                    }
+                                    if (di != null && di.status == 3) {
+                                      return const Icon(FeatherIcons.clock);
+                                    }
+                                    if (di != null && di.status == 2) {
+                                      return IconButton(
+                                        icon: const Icon(FeatherIcons.refreshCw),
+                                        onPressed: () async {
+                                          await _maybeShowDownloadWarning();
+                                          await DownloadsService.startDownload(ch);
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Retry started')));
+                                          _ensureDlTicker();
+                                        },
+                                      );
+                                    }
+                                    if (di != null && di.completed) {
+                                      return const Icon(FeatherIcons.check);
+                                    }
+                                    return IconButton(
+                                      icon: const Icon(FeatherIcons.download),
+                                      onPressed: () async {
+                                        await _maybeShowDownloadWarning();
+                                        await DownloadsService.startDownload(ch);
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(const SnackBar(content: Text('Download started')));
+                                        _ensureDlTicker();
+                                      },
+                                    );
+                                  }(),
+                                ],
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                ],
+              ),
             ),
-          ),
-        );
+          );
+        });
       },
     );
+    fut.whenComplete(() { _episodeSheetSetState = null; });
   }
 
   @override
@@ -562,6 +639,7 @@ class _DetailsPageState extends State<DetailsPage> {
                               (widget.channel.image?.trim().isNotEmpty ?? false)
                                   ? widget.channel.image!.trim()
                                   : (poster ?? ''),
+                          cacheManager: ImageCacheManager.instance,
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -767,7 +845,9 @@ class _DetailsPageState extends State<DetailsPage> {
                               height: 56,
                               child: (img?.trim().isNotEmpty ?? false)
                                   ? CachedNetworkImage(
-                                      imageUrl: img!.trim(), fit: BoxFit.cover)
+                                      imageUrl: img!.trim(),
+                                      cacheManager: ImageCacheManager.instance,
+                                      fit: BoxFit.cover)
                                   : Container(
                                       color: Theme.of(context)
                                           .colorScheme
@@ -835,12 +915,12 @@ class _DetailsPageState extends State<DetailsPage> {
                                   return IconButton(
                                     icon: const Icon(FeatherIcons.download),
                                     onPressed: () async {
+                                      await _maybeShowDownloadWarning();
                                       await DownloadsService.startDownload(ch);
                                       if (!mounted) return;
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(const SnackBar(
-                                              content:
-                                                  Text('Download started')));
+                                              content: Text('Download started')));
                                     },
                                   );
                                 }(),
@@ -928,6 +1008,7 @@ class _TmdbDetailsPageState extends State<TmdbDetailsPage> {
                 Center(
                   child: CachedNetworkImage(
                     imageUrl: widget.item.posterUrl!,
+                    cacheManager: ImageCacheManager.instance,
                     width: 300,
                     fit: BoxFit.cover,
                   ),
