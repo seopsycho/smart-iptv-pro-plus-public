@@ -10,6 +10,7 @@ import 'package:smart_iptv_pro/models/media_type.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart' as mkvideo;
 import 'package:smart_iptv_pro/select_dialog.dart';
+import 'package:smart_iptv_pro/services/chromecast_service.dart';
 
 class Player extends StatefulWidget {
   final Channel channel;
@@ -148,6 +149,38 @@ class _PlayerState extends State<Player> {
     });
   }
 
+  Future<void> castToDevice() async {
+    try {
+      final headers = await Sql.getChannelHeaders(widget.channel.id!);
+      final position = widget.channel.mediaType == MediaType.movie
+          ? player.state.position
+          : Duration.zero;
+      final ok = await ChromecastService.loadChannel(
+        widget.channel,
+        headers: headers != null
+            ? {
+                if (headers.referrer != null) 'Referer': headers.referrer!,
+                if (headers.httpOrigin != null) 'Origin': headers.httpOrigin!,
+                if (headers.userAgent != null) 'User-Agent': headers.userAgent!,
+              }
+            : null,
+        start: position,
+      );
+      if (!mounted) return;
+      if (ok) {
+        await player.pause();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ok
+              ? 'Casting to device...'
+              : 'Failed to send to Cast device')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Cast error: $e')));
+    }
+  }
+
   MaterialVideoControlsThemeData getThemeData(BuildContext context) {
     return MaterialVideoControlsThemeData(
         speedUpOnLongPress: false,
@@ -184,6 +217,12 @@ class _PlayerState extends State<Player> {
             icon: Icon(Icons.aspect_ratio_outlined,
                 color: Colors.white, size: 32),
             onPressed: toggleZoom,
+          ),
+          SizedBox(width: 20),
+          IconButton(
+            tooltip: 'Cast',
+            onPressed: castToDevice,
+            icon: const Icon(Icons.cast, color: Colors.white, size: 32),
           ),
         ]);
   }

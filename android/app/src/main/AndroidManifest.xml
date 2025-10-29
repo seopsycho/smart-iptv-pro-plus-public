@@ -32,6 +32,14 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Google Cast configuration -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.smartiptv.pro.CastOptionsProvider" />
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.ReceiverApplicationId"
+            android:value="CC1AD845" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

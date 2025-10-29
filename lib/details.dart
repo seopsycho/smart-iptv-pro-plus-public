@@ -17,7 +17,6 @@ import 'package:smart_iptv_pro/models/source.dart';
 import 'package:smart_iptv_pro/player.dart';
 import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:smart_iptv_pro/services/cast_service.dart';
 import 'package:smart_iptv_pro/models/download_item.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
 
@@ -362,7 +361,7 @@ class _DetailsPageState extends State<DetailsPage> {
                 )));
   }
 
-  Future<void> _showEpisodePicker({bool cast = false}) async {
+  Future<void> _showEpisodePicker() async {
     if (_episodesLoading) return;
     if (_episodesBySeason.isEmpty) {
       await _loadEpisodesIfSeries();
@@ -425,19 +424,15 @@ class _DetailsPageState extends State<DetailsPage> {
                               ? Text(xe.info!.plot!, maxLines: 2, overflow: TextOverflow.ellipsis)
                               : null,
                           trailing: IconButton(
-                            icon: Icon(cast ? Icons.cast : FeatherIcons.play),
+                            icon: const Icon(FeatherIcons.play),
                             onPressed: () async {
                               Navigator.of(context).pop();
                               if (ch != null) {
-                                if (cast) {
-                                  await CastService.castChannel(ch);
-                                } else {
-                                  await _play(ch);
-                                }
+                                await _play(ch);
                               } else if (_source != null) {
                                 final url = getUrl(xe.id, _source!, MediaType.serie, xe.containerExtension);
                                 final epChannel = Channel(
-                                  name: xe.title.trim().isNotEmpty ? xe.title.trim() : 'Episode ${eNum}',
+                                  name: xe.title.trim().isEmpty ? 'Episode ${eNum}' : xe.title.trim(),
                                   mediaType: MediaType.movie,
                                   sourceId: widget.channel.sourceId,
                                   favorite: false,
@@ -446,18 +441,12 @@ class _DetailsPageState extends State<DetailsPage> {
                                   seriesId: int.tryParse(widget.channel.url ?? ''),
                                   streamId: int.tryParse(xe.id),
                                 );
-                                if (cast) {
-                                  await CastService.castChannel(epChannel);
-                                } else {
-                                  // Don't add to history for ad-hoc channel
-                                  if (!mounted) return;
-                                  Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (_) => Player(
-                                                channel: epChannel,
-                                              )));
-                                }
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) => Player(
+                                              channel: epChannel,
+                                            )));
                               }
                             },
                           ),
@@ -471,17 +460,6 @@ class _DetailsPageState extends State<DetailsPage> {
         );
       },
     );
-  }
-
-  Future<void> _cast() async {
-    // Casting: for series, open episode picker in cast mode
-    if (widget.channel.mediaType == MediaType.serie) {
-      await CastService.ensureConnected(context);
-      await _showEpisodePicker(cast: true);
-      return;
-    }
-    await CastService.ensureConnected(context);
-    await CastService.castChannel(widget.channel);
   }
 
   @override
@@ -550,11 +528,6 @@ class _DetailsPageState extends State<DetailsPage> {
                       onPressed: () => _play(widget.channel),
                       icon: const Icon(FeatherIcons.play),
                       label: const Text('Play')),
-                  const SizedBox(width: 12),
-                  OutlinedButton.icon(
-                      onPressed: _cast,
-                      icon: const Icon(Icons.cast),
-                      label: const Text('Cast')),
                   const SizedBox(width: 12),
                   if (trailerKey != null)
                     OutlinedButton.icon(
