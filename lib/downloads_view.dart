@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +9,8 @@ import 'package:smart_iptv_pro/player.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
 
 class DownloadsView extends StatefulWidget {
-  const DownloadsView({super.key});
+  final bool embedded;
+  const DownloadsView({super.key, this.embedded = false});
 
   @override
   State<DownloadsView> createState() => _DownloadsViewState();
@@ -17,6 +19,7 @@ class DownloadsView extends StatefulWidget {
 class _DownloadsViewState extends State<DownloadsView> {
   List<DownloadItem> items = [];
   bool loading = true;
+  Timer? _timer;
 
   @override
   void initState() {
@@ -31,6 +34,7 @@ class _DownloadsViewState extends State<DownloadsView> {
       items = list;
       loading = false;
     });
+    _ensureTicker();
   }
 
   Future<void> _play(DownloadItem di) async {
@@ -60,58 +64,92 @@ class _DownloadsViewState extends State<DownloadsView> {
     await _load();
   }
 
+  void _ensureTicker() {
+    final active = items.any((d) => d.status == 0);
+    if (active && _timer == null) {
+      _timer = Timer.periodic(const Duration(milliseconds: 800), (_) async {
+        final list = await Sql.getAllDownloads();
+        if (!mounted) return;
+        setState(() {
+          items = list;
+        });
+        if (!items.any((d) => d.status == 0)) {
+          _timer?.cancel();
+          _timer = null;
+        }
+      });
+    }
+    if (!active && _timer != null) {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    super.dispose();
+  }
+
+  Widget _buildList(BuildContext context) {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (items.isEmpty) return const Center(child: Text('No downloads yet'));
+    return ListView.separated(
+      itemBuilder: (context, index) {
+        final di = items[index];
+        final image = di.channel.image;
+        final hasTotal = di.totalBytes > 0;
+        final sub = di.completed
+            ? 'Completed'
+            : (hasTotal ? '${((di.progress) * 100).toStringAsFixed(0)}%' : 'Downloading...');
+        return ListTile(
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 80,
+              height: 45,
+              child: (image?.trim().isNotEmpty ?? false)
+                  ? CachedNetworkImage(
+                      imageUrl: image!.trim(),
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      color: Theme.of(context).colorScheme.surfaceContainer,
+                      child: const Icon(Icons.movie),
+                    ),
+            ),
+          ),
+          title: Text(di.channel.name),
+          subtitle: Text(sub),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.play_arrow),
+                onPressed: di.completed ? () => _play(di) : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: () => _remove(di),
+              ),
+            ],
+          ),
+        );
+      },
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemCount: items.length,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return _buildList(context);
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Downloads')),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : items.isEmpty
-              ? const Center(child: Text('No downloads yet'))
-              : ListView.separated(
-                  itemBuilder: (context, index) {
-                    final di = items[index];
-                    final image = di.channel.image;
-                    final sub = di.completed
-                        ? 'Completed'
-                        : '${((di.progress) * 100).toStringAsFixed(0)}%';
-                    return ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: SizedBox(
-                          width: 80,
-                          height: 45,
-                          child: (image?.trim().isNotEmpty ?? false)
-                              ? CachedNetworkImage(
-                                  imageUrl: image!.trim(),
-                                  fit: BoxFit.cover,
-                                )
-                              : Container(
-                                  color: Theme.of(context).colorScheme.surfaceContainer,
-                                  child: const Icon(Icons.movie),
-                                ),
-                        ),
-                      ),
-                      title: Text(di.channel.name),
-                      subtitle: Text(sub),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.play_arrow),
-                            onPressed: () => _play(di),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => _remove(di),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemCount: items.length,
-                ),
+      body: _buildList(context),
     );
   }
 }

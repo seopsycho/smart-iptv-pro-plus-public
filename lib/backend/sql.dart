@@ -128,6 +128,7 @@ class Sql {
       SELECT * FROM channels
       WHERE url IS NOT NULL
         AND media_type = ?
+        AND series_id IS NULL
         AND source_id IN (${generatePlaceholders(sourceIds.length)})
       ORDER BY id DESC
       LIMIT ?

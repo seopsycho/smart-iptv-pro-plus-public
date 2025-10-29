@@ -383,6 +383,9 @@ class _HomeState extends State<Home> {
     if (widget.home.filters.viewType == ViewType.favorites) {
       return 1; // Favorites
     }
+    if (widget.home.filters.viewType == ViewType.downloads) {
+      return 5; // Downloads tab
+    }
     if (widget.home.filters.mediaTypes != null &&
         widget.home.filters.mediaTypes!.length == 1) {
       final m = widget.home.filters.mediaTypes!.first;
@@ -394,7 +397,7 @@ class _HomeState extends State<Home> {
   }
 
   void onTabSelected(int index) async {
-    // Map tabs: 0 Home, 1 Favorites, 2 Live TV, 3 Series, 4 Movies
+    // Map tabs: 0 Home, 1 Favorites, 2 Live TV, 3 Series, 4 Movies, 5 Downloads
     List<MediaType>? mediaTypes;
     ViewType viewType = ViewType.all;
     if (index == 0) {
@@ -416,11 +419,8 @@ class _HomeState extends State<Home> {
       mediaTypes = [MediaType.movie];
       viewType = ViewType.all;
     } else if (index == 5) {
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        NoPushAnimationMaterialPageRoute(builder: (_) => const DownloadsView()),
-      );
-      return;
+      viewType = ViewType.downloads;
+      mediaTypes = null;
     }
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -655,6 +655,8 @@ class _HomeState extends State<Home> {
                           ? _buildMoviesLanding()
                           : (getStartingIndex() == 3 && !searchMode && widget.home.node == null)
                               ? _buildSeriesLanding()
+                              : (getStartingIndex() == 5 && !searchMode && widget.home.node == null)
+                                  ? const DownloadsView(embedded: true)
                       : GridView.builder(
                           shrinkWrap: true,
                           controller: _scrollController,

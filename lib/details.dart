@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_feather_icons/flutter_feather_icons.dart';
@@ -46,6 +47,7 @@ class _DetailsPageState extends State<DetailsPage> {
   Source? _source;
   DownloadItem? _download;
   bool _dlLoading = false;
+  Timer? _dlTimer;
 
   @override
   void initState() {
@@ -61,6 +63,7 @@ class _DetailsPageState extends State<DetailsPage> {
     if (widget.channel.id == null) return;
     final d = await Sql.getDownload(widget.channel.id!);
     if (mounted) setState(() => _download = d);
+    _ensureDlTicker();
   }
 
   Future<void> _startDownload() async {
@@ -89,6 +92,54 @@ class _DetailsPageState extends State<DetailsPage> {
             builder: (_) => Player(
                   channel: ch,
                 )));
+  }
+
+  void _ensureDlTicker() {
+    final active = (_download != null && _download!.status == 0);
+    if (active && _dlTimer == null) {
+      _dlTimer = Timer.periodic(const Duration(milliseconds: 800), (_) async {
+        if (widget.channel.id == null) return;
+        final d = await Sql.getDownload(widget.channel.id!);
+        if (!mounted) return;
+        setState(() {
+          _download = d;
+        });
+        if (d == null || d.status != 0) {
+          _dlTimer?.cancel();
+          _dlTimer = null;
+        }
+      });
+    }
+    if (!active && _dlTimer != null) {
+      _dlTimer?.cancel();
+      _dlTimer = null;
+    }
+  }
+
+  Future<void> _downloadSeason() async {
+    if (_selectedSeason == null) return;
+    final list = _episodesBySeason[_selectedSeason!] ?? const <XtreamEpisode>[];
+    final channels = list
+        .map((xe) => _episodeByStreamId[int.tryParse(xe.id) ?? -1])
+        .where((c) => c != null)
+        .cast<Channel>()
+        .toList();
+    if (channels.isEmpty) return;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Starting downloads for season ${_selectedSeason!} (${channels.length})')));
+    }
+    for (final ch in channels) {
+      unawaited(DownloadsService.startDownload(ch));
+    }
+    await _loadDownload();
+  }
+
+  @override
+  void dispose() {
+    _dlTimer?.cancel();
+    _dlTimer = null;
+    super.dispose();
   }
 
   Future<void> _loadArtworkAndTrailer() async {
@@ -515,21 +566,44 @@ class _DetailsPageState extends State<DetailsPage> {
                         label: const Text('Trailer')),
                   const SizedBox(width: 12),
                   if (widget.channel.mediaType == MediaType.movie)
-                    (_dlLoading
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8.0),
-                            child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-                          )
-                        : OutlinedButton.icon(
-                            onPressed: () async {
-                              if (_download != null && _download!.completed) {
-                                await _playDownloaded();
-                              } else {
-                                await _startDownload();
-                              }
-                            },
-                            icon: Icon(_download != null && _download!.completed ? FeatherIcons.play : FeatherIcons.download),
-                            label: Text(_download != null && _download!.completed ? 'Play Download' : 'Download'))),
+                    (() {
+                      if (_dlLoading) {
+                        return OutlinedButton.icon(
+                          onPressed: null,
+                          icon: const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          label: const Text('Starting...'),
+                        );
+                      }
+                      if (_download != null && _download!.status == 0) {
+                        final hasTotal = _download!.totalBytes > 0;
+                        final pct = hasTotal ? (_download!.progress * 100).clamp(0, 100).toStringAsFixed(0) : null;
+                        return OutlinedButton.icon(
+                          onPressed: null,
+                          icon: const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          label: Text(hasTotal ? '$pct%' : 'Downloading...'),
+                        );
+                      }
+                      if (_download != null && _download!.completed) {
+                        return OutlinedButton.icon(
+                          onPressed: () async => await _playDownloaded(),
+                          icon: const Icon(FeatherIcons.play),
+                          label: const Text('Play Download'),
+                        );
+                      }
+                      return OutlinedButton.icon(
+                        onPressed: () async => await _startDownload(),
+                        icon: const Icon(FeatherIcons.download),
+                        label: const Text('Download'),
+                      );
+                    }()),
                   const SizedBox(width: 12),
                   TextButton.icon(
                       onPressed: _toggleFavorite,
@@ -599,7 +673,18 @@ class _DetailsPageState extends State<DetailsPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (_selectedSeason != null)
+                  if (_selectedSeason != null) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _downloadSeason,
+                          icon: const Icon(FeatherIcons.download),
+                          label: const Text('Download Season'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     ListView.separated(
                       physics: const NeverScrollableScrollPhysics(),
                       shrinkWrap: true,
@@ -673,6 +758,7 @@ class _DetailsPageState extends State<DetailsPage> {
                         );
                       },
                     ),
+                  ]
                 ]
               ]
             ],

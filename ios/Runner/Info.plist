@@ -67,5 +67,9 @@
 	<string>Allow SmartIPTV Pro+ to save artwork to your photo library when you export or save images.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SmartIPTV Pro+ uses the microphone only for Google Cast guest mode (ultrasonic pairing) to discover and connect to nearby Cast devices. Audio is not recorded or stored.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>SmartIPTV Pro+ uses Bluetooth to help discover and connect to nearby Cast-enabled devices. We do not collect or store any Bluetooth data.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow SmartIPTV Pro+ to use the camera to capture artwork for channels and playlists.</string>
 </dict>
 </plist>

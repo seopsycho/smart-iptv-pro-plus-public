@@ -54,7 +54,7 @@ class DownloadsService {
           if (total > 0) {
             await Sql.updateDownloadProgress(channel.id!, received, total);
           } else {
-            await Sql.updateDownloadProgress(channel.id!, received, received);
+            await Sql.updateDownloadProgress(channel.id!, received, 0);
           }
         },
         onError: (e) async {
