@@ -137,6 +137,27 @@ class DbFactory {
         await tx.execute('''
           CREATE INDEX IF NOT EXISTS index_groups_position ON groups(position);
         ''');
+      }))
+      ..add(SqliteMigration(5, (tx) async {
+        await tx.execute('''
+          CREATE TABLE "downloads" (
+            "id" INTEGER PRIMARY KEY,
+            "channel_id" integer UNIQUE,
+            "file_path" varchar(1000),
+            "status" integer,
+            "bytes" integer,
+            "total_bytes" integer,
+            "created_at" integer,
+            "updated_at" integer,
+            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
+          );
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_downloads_status ON downloads(status);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_downloads_updated_at ON downloads(updated_at);
+        ''');
       }));
     await migrations.migrate(db);
     // Improve concurrency: readers don't block writers and vice-versa

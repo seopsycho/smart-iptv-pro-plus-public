@@ -16,6 +16,9 @@ import 'package:smart_iptv_pro/models/source.dart';
 import 'package:smart_iptv_pro/player.dart';
 import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:smart_iptv_pro/services/cast_service.dart';
+import 'package:smart_iptv_pro/models/download_item.dart';
+import 'package:smart_iptv_pro/services/downloads_service.dart';
 
 class DetailsPage extends StatefulWidget {
   final Channel channel;
@@ -41,6 +44,8 @@ class _DetailsPageState extends State<DetailsPage> {
   int? _selectedSeason;
   Map<int, Channel> _episodeByStreamId = {};
   Source? _source;
+  DownloadItem? _download;
+  bool _dlLoading = false;
 
   @override
   void initState() {
@@ -49,6 +54,41 @@ class _DetailsPageState extends State<DetailsPage> {
     _loadArtworkAndTrailer();
     _loadDetails();
     _loadEpisodesIfSeries();
+    _loadDownload();
+  }
+
+  Future<void> _loadDownload() async {
+    if (widget.channel.id == null) return;
+    final d = await Sql.getDownload(widget.channel.id!);
+    if (mounted) setState(() => _download = d);
+  }
+
+  Future<void> _startDownload() async {
+    if (widget.channel.id == null) return;
+    setState(() => _dlLoading = true);
+    try {
+      await DownloadsService.startDownload(widget.channel);
+      await _loadDownload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Download started')));
+      }
+    } finally {
+      if (mounted) setState(() => _dlLoading = false);
+    }
+  }
+
+  Future<void> _playDownloaded() async {
+    if (_download == null || !(_download!.completed)) return;
+    final ch = widget.channel;
+    ch.url = Uri.file(_download!.filePath).toString();
+    if (!mounted) return;
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => Player(
+                  channel: ch,
+                )));
   }
 
   Future<void> _loadArtworkAndTrailer() async {
@@ -271,7 +311,7 @@ class _DetailsPageState extends State<DetailsPage> {
                 )));
   }
 
-  Future<void> _showEpisodePicker() async {
+  Future<void> _showEpisodePicker({bool cast = false}) async {
     if (_episodesLoading) return;
     if (_episodesBySeason.isEmpty) {
       await _loadEpisodesIfSeries();
@@ -334,11 +374,15 @@ class _DetailsPageState extends State<DetailsPage> {
                               ? Text(xe.info!.plot!, maxLines: 2, overflow: TextOverflow.ellipsis)
                               : null,
                           trailing: IconButton(
-                            icon: const Icon(FeatherIcons.play),
+                            icon: Icon(cast ? Icons.cast : FeatherIcons.play),
                             onPressed: () async {
                               Navigator.of(context).pop();
                               if (ch != null) {
-                                await _play(ch);
+                                if (cast) {
+                                  await CastService.castChannel(ch);
+                                } else {
+                                  await _play(ch);
+                                }
                               } else if (_source != null) {
                                 final url = getUrl(xe.id, _source!, MediaType.serie, xe.containerExtension);
                                 final epChannel = Channel(
@@ -351,14 +395,18 @@ class _DetailsPageState extends State<DetailsPage> {
                                   seriesId: int.tryParse(widget.channel.url ?? ''),
                                   streamId: int.tryParse(xe.id),
                                 );
-                                // Don't add to history for ad-hoc channel
-                                if (!mounted) return;
-                                Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) => Player(
-                                              channel: epChannel,
-                                            )));
+                                if (cast) {
+                                  await CastService.castChannel(epChannel);
+                                } else {
+                                  // Don't add to history for ad-hoc channel
+                                  if (!mounted) return;
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) => Player(
+                                                channel: epChannel,
+                                              )));
+                                }
                               }
                             },
                           ),
@@ -372,6 +420,17 @@ class _DetailsPageState extends State<DetailsPage> {
         );
       },
     );
+  }
+
+  Future<void> _cast() async {
+    // Casting: for series, open episode picker in cast mode
+    if (widget.channel.mediaType == MediaType.serie) {
+      await CastService.ensureConnected(context);
+      await _showEpisodePicker(cast: true);
+      return;
+    }
+    await CastService.ensureConnected(context);
+    await CastService.castChannel(widget.channel);
   }
 
   @override
@@ -441,6 +500,11 @@ class _DetailsPageState extends State<DetailsPage> {
                       icon: const Icon(FeatherIcons.play),
                       label: const Text('Play')),
                   const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                      onPressed: _cast,
+                      icon: const Icon(Icons.cast),
+                      label: const Text('Cast')),
+                  const SizedBox(width: 12),
                   if (trailerKey != null)
                     OutlinedButton.icon(
                         onPressed: () async {
@@ -449,6 +513,23 @@ class _DetailsPageState extends State<DetailsPage> {
                         },
                         icon: const Icon(FeatherIcons.film),
                         label: const Text('Trailer')),
+                  const SizedBox(width: 12),
+                  if (widget.channel.mediaType == MediaType.movie)
+                    (_dlLoading
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0),
+                            child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+                          )
+                        : OutlinedButton.icon(
+                            onPressed: () async {
+                              if (_download != null && _download!.completed) {
+                                await _playDownloaded();
+                              } else {
+                                await _startDownload();
+                              }
+                            },
+                            icon: Icon(_download != null && _download!.completed ? FeatherIcons.play : FeatherIcons.download),
+                            label: Text(_download != null && _download!.completed ? 'Play Download' : 'Download'))),
                   const SizedBox(width: 12),
                   TextButton.icon(
                       onPressed: _toggleFavorite,
@@ -548,31 +629,46 @@ class _DetailsPageState extends State<DetailsPage> {
                           subtitle: (xe.info?.plot != null && xe.info!.plot!.trim().isNotEmpty)
                               ? Text(xe.info!.plot!, maxLines: 2, overflow: TextOverflow.ellipsis)
                               : null,
-                          trailing: IconButton(
-                            icon: const Icon(FeatherIcons.play),
-                            onPressed: () async {
-                              if (ch != null) {
-                                await _play(ch);
-                              } else if (_source != null) {
-                                final url = getUrl(xe.id, _source!, MediaType.serie, xe.containerExtension);
-                                final epChannel = Channel(
-                                  name: xe.title.trim().isEmpty ? 'Episode ${eNum}' : xe.title.trim(),
-                                  mediaType: MediaType.movie,
-                                  sourceId: widget.channel.sourceId,
-                                  favorite: false,
-                                  image: img,
-                                  url: url,
-                                  seriesId: int.tryParse(widget.channel.url ?? ''),
-                                  streamId: int.tryParse(xe.id),
-                                );
-                                Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) => Player(
-                                              channel: epChannel,
-                                            )));
-                              }
-                            },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(FeatherIcons.play),
+                                onPressed: () async {
+                                  if (ch != null) {
+                                    await _play(ch);
+                                  } else if (_source != null) {
+                                    final url = getUrl(xe.id, _source!, MediaType.serie, xe.containerExtension);
+                                    final epChannel = Channel(
+                                      name: xe.title.trim().isEmpty ? 'Episode ${eNum}' : xe.title.trim(),
+                                      mediaType: MediaType.movie,
+                                      sourceId: widget.channel.sourceId,
+                                      favorite: false,
+                                      image: img,
+                                      url: url,
+                                      seriesId: int.tryParse(widget.channel.url ?? ''),
+                                      streamId: int.tryParse(xe.id),
+                                    );
+                                    Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) => Player(
+                                                  channel: epChannel,
+                                                )));
+                                  }
+                                },
+                              ),
+                              if (ch != null)
+                                IconButton(
+                                  icon: const Icon(FeatherIcons.download),
+                                  onPressed: () async {
+                                    await DownloadsService.startDownload(ch);
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Download started')));
+                                  },
+                                ),
+                            ],
                           ),
                         );
                       },

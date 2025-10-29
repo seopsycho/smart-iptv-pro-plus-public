@@ -10,6 +10,8 @@ jobs:
   build:
     runs-on: macos-latest
     environment: production
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
     - uses: actions/checkout@v3
@@ -34,7 +36,8 @@ jobs:
       run: |
         flutter clean
         flutter pub get
-        flutter build ipa --release --no-codesign
+        echo "Using build number $BUILD_NUMBER"
+        flutter build ipa --release --no-codesign --build-number $BUILD_NUMBER
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4

@@ -9,12 +9,14 @@ import 'package:smart_iptv_pro/models/home_manager.dart';
 import 'package:smart_iptv_pro/models/settings.dart';
 import 'package:smart_iptv_pro/setup.dart';
 import 'package:smart_iptv_pro/onboarding.dart';
+import 'package:smart_iptv_pro/services/cast_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await dotenv.dotenv.load(fileName: ".env");
   } catch (_) {}
+  await CastService.initialize();
   final hasSources = await Sql.hasSources();
   final settings = await SettingsService.getSettings();
   final hasSeenOnboarding = await SettingsService.getHasSeenOnboarding();

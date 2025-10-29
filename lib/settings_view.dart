@@ -17,6 +17,8 @@ import 'package:smart_iptv_pro/models/view_type.dart';
 import 'package:smart_iptv_pro/error.dart';
 import 'package:smart_iptv_pro/setup.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:smart_iptv_pro/downloads_view.dart';
+import 'package:smart_iptv_pro/services/downloads_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
 
 class SettingsView extends StatefulWidget {
@@ -351,6 +353,48 @@ class _SettingsState extends State<SettingsView> {
                                 ),
                               ],
                             ),
+                          ),
+                          const Divider(),
+                          ListTile(
+                            title: const Text('Downloads'),
+                            subtitle: const Text('View and manage downloaded items'),
+                            trailing: const Icon(Icons.download),
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                PageRouteBuilder(
+                                  pageBuilder: (_, __, ___) => const DownloadsView(),
+                                  transitionDuration: Duration.zero,
+                                  reverseTransitionDuration: Duration.zero,
+                                  transitionsBuilder: (context, a, b, child) => child,
+                                ),
+                              );
+                            },
+                          ),
+                          ListTile(
+                            title: const Text('Clear all downloads'),
+                            trailing: const Icon(Icons.delete_forever),
+                            onTap: () async {
+                              final ok = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('Clear all downloads?'),
+                                  content: const Text('This will delete all downloaded files from your device.'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                    TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Clear')),
+                                  ],
+                                ),
+                              );
+                              if (ok == true) {
+                                await DownloadsService.clearAllDownloads();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Cleared downloads')),
+                                  );
+                                }
+                              }
+                            },
                           ),
                           const Divider(),
                           const Padding(

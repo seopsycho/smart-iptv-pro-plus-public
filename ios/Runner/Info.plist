@@ -54,6 +54,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SmartIPTV Pro+ uses the local network to discover Cast-enabled devices on your Wi‑Fi network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_CC1AD845._googlecast._tcp</string>
+		<string>_googlecast._tcp</string>
+	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Allow SmartIPTV Pro+ to access your photo library to choose artwork for channels and playlists.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

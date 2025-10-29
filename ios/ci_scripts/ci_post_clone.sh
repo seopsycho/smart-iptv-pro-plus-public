@@ -4,7 +4,12 @@
 set -e
 
 # The default execution directory of this script is the ci_scripts directory.
-cd $CI_PRIMARY_REPOSITORY_PATH # change working directory to the root of your cloned repo.
+cd "$CI_PRIMARY_REPOSITORY_PATH" # change working directory to the root of your cloned repo.
+
+# If the Flutter app is in a subfolder (monorepo), cd into it
+if [ ! -f "pubspec.yaml" ] && [ -d "smart-iptv-pro-plus" ] && [ -f "smart-iptv-pro-plus/pubspec.yaml" ]; then
+  cd smart-iptv-pro-plus
+fi
 
 # Install Flutter using git.
 git clone https://github.com/flutter/flutter.git --depth 1 -b stable $HOME/flutter

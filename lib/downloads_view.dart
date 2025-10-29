@@ -1,0 +1,117 @@
+import 'dart:io';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:smart_iptv_pro/backend/sql.dart';
+import 'package:smart_iptv_pro/models/download_item.dart';
+import 'package:smart_iptv_pro/player.dart';
+import 'package:smart_iptv_pro/services/downloads_service.dart';
+
+class DownloadsView extends StatefulWidget {
+  const DownloadsView({super.key});
+
+  @override
+  State<DownloadsView> createState() => _DownloadsViewState();
+}
+
+class _DownloadsViewState extends State<DownloadsView> {
+  List<DownloadItem> items = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final list = await Sql.getAllDownloads();
+    if (!mounted) return;
+    setState(() {
+      items = list;
+      loading = false;
+    });
+  }
+
+  Future<void> _play(DownloadItem di) async {
+    final file = File(di.filePath);
+    if (!(await file.exists())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File missing. Removing from downloads.')), 
+      );
+      await DownloadsService.removeDownload(di.channel.id!);
+      await _load();
+      return;
+    }
+    final localUrl = Uri.file(di.filePath).toString();
+    final ch = di.channel;
+    ch.url = localUrl;
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Player(channel: ch),
+      ),
+    );
+  }
+
+  Future<void> _remove(DownloadItem di) async {
+    await DownloadsService.removeDownload(di.channel.id!);
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Downloads')),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : items.isEmpty
+              ? const Center(child: Text('No downloads yet'))
+              : ListView.separated(
+                  itemBuilder: (context, index) {
+                    final di = items[index];
+                    final image = di.channel.image;
+                    final sub = di.completed
+                        ? 'Completed'
+                        : '${((di.progress) * 100).toStringAsFixed(0)}%';
+                    return ListTile(
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 80,
+                          height: 45,
+                          child: (image?.trim().isNotEmpty ?? false)
+                              ? CachedNetworkImage(
+                                  imageUrl: image!.trim(),
+                                  fit: BoxFit.cover,
+                                )
+                              : Container(
+                                  color: Theme.of(context).colorScheme.surfaceContainer,
+                                  child: const Icon(Icons.movie),
+                                ),
+                        ),
+                      ),
+                      title: Text(di.channel.name),
+                      subtitle: Text(sub),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.play_arrow),
+                            onPressed: () => _play(di),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => _remove(di),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemCount: items.length,
+                ),
+    );
+  }
+}

@@ -5,6 +5,7 @@ import 'package:smart_iptv_pro/models/channel.dart';
 import 'package:smart_iptv_pro/models/channel_http_headers.dart';
 import 'package:smart_iptv_pro/models/channel_preserve.dart';
 import 'package:smart_iptv_pro/models/filters.dart';
+import 'package:smart_iptv_pro/models/download_item.dart';
 import 'package:smart_iptv_pro/models/id_data.dart';
 import 'package:smart_iptv_pro/models/media_type.dart';
 import 'package:smart_iptv_pro/models/source.dart';
@@ -635,5 +636,102 @@ class Sql {
         ''', [channel.favorite, channel.lastWatched, channel.name, sourceId]);
       }
     };
+  }
+
+  static Future<void> upsertDownload({
+    required int channelId,
+    required String filePath,
+    required int status,
+    required int bytes,
+    required int totalBytes,
+  }) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      INSERT INTO downloads (channel_id, file_path, status, bytes, total_bytes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
+      ON CONFLICT(channel_id) DO UPDATE SET
+        file_path = excluded.file_path,
+        status = excluded.status,
+        bytes = excluded.bytes,
+        total_bytes = excluded.total_bytes,
+        updated_at = strftime('%s','now');
+    ''', [channelId, filePath, status, bytes, totalBytes]);
+  }
+
+  static Future<void> updateDownloadProgress(int channelId, int bytes, int totalBytes) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      UPDATE downloads
+      SET bytes = ?, total_bytes = ?, updated_at = strftime('%s','now')
+      WHERE channel_id = ?
+    ''', [bytes, totalBytes, channelId]);
+  }
+
+  static Future<void> updateDownloadStatus(int channelId, int status) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      UPDATE downloads
+      SET status = ?, updated_at = strftime('%s','now')
+      WHERE channel_id = ?
+    ''', [status, channelId]);
+  }
+
+  static Future<void> deleteDownload(int channelId) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      DELETE FROM downloads WHERE channel_id = ?
+    ''', [channelId]);
+  }
+
+  static Future<void> deleteAllDownloads() async {
+    var db = await DbFactory.db;
+    await db.execute('DELETE FROM downloads');
+  }
+
+  static DownloadItem _rowToDownloadItem(Row row) {
+    final channel = Channel(
+      id: row.columnAt(5),
+      name: row.columnAt(6),
+      group: row.columnAt(7),
+      image: row.columnAt(8),
+      url: row.columnAt(9),
+      mediaType: MediaType.values[row.columnAt(10)],
+      sourceId: row.columnAt(11),
+      favorite: row.columnAt(12) == 1,
+      seriesId: row.columnAt(13),
+      groupId: row.columnAt(14),
+      streamId: row.columnAt(15),
+    );
+    return DownloadItem(
+      channel: channel,
+      filePath: row.columnAt(1),
+      status: row.columnAt(2),
+      bytes: row.columnAt(3) ?? 0,
+      totalBytes: row.columnAt(4) ?? 0,
+    );
+  }
+
+  static Future<DownloadItem?> getDownload(int channelId) async {
+    var db = await DbFactory.db;
+    final row = await db.getOptional('''
+      SELECT d.channel_id, d.file_path, d.status, d.bytes, d.total_bytes,
+             c.id, c.name, c.group_name, c.image, c.url, c.media_type, c.source_id, c.favorite, c.series_id, c.group_id, c.stream_id
+      FROM downloads d JOIN channels c ON c.id = d.channel_id
+      WHERE d.channel_id = ?
+      LIMIT 1
+    ''', [channelId]);
+    if (row == null) return null;
+    return _rowToDownloadItem(row);
+  }
+
+  static Future<List<DownloadItem>> getAllDownloads() async {
+    var db = await DbFactory.db;
+    final results = await db.getAll('''
+      SELECT d.channel_id, d.file_path, d.status, d.bytes, d.total_bytes,
+             c.id, c.name, c.group_name, c.image, c.url, c.media_type, c.source_id, c.favorite, c.series_id, c.group_id, c.stream_id
+      FROM downloads d JOIN channels c ON c.id = d.channel_id
+      ORDER BY d.updated_at DESC
+    ''');
+    return results.map(_rowToDownloadItem).toList();
   }
 }

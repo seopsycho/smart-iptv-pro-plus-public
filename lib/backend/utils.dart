@@ -22,6 +22,13 @@ class Utils {
     return join(tempDir, fileName);
   }
 
+  static Future<String> getDownloadsDir() async {
+    final path = await appDir;
+    final dlDir = join(path, "downloads");
+    await Directory(dlDir).create(recursive: true);
+    return dlDir;
+  }
+
   static Future<void> refreshSource(Source source) async {
     refreshedSeries.clear();
     await processSource(source, true, null);

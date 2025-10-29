@@ -25,6 +25,8 @@ import 'package:smart_iptv_pro/services/tmdb_service.dart';
 import 'package:smart_iptv_pro/models/tmdb_item.dart';
 import 'package:smart_iptv_pro/details.dart';
 import 'package:smart_iptv_pro/manage_categories.dart';
+import 'package:smart_iptv_pro/services/cast_service.dart';
+import 'package:smart_iptv_pro/downloads_view.dart';
 
 class Home extends StatefulWidget {
   final HomeManager home;
@@ -413,6 +415,12 @@ class _HomeState extends State<Home> {
     } else if (index == 4) {
       mediaTypes = [MediaType.movie];
       viewType = ViewType.all;
+    } else if (index == 5) {
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        NoPushAnimationMaterialPageRoute(builder: (_) => const DownloadsView()),
+      );
+      return;
     }
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -464,6 +472,13 @@ class _HomeState extends State<Home> {
                   : null,
               actions: widget.home.node == null
                   ? [
+                      IconButton(
+                        tooltip: 'Cast',
+                        icon: const Icon(Icons.cast),
+                        onPressed: () async {
+                          await CastService.ensureConnected(context);
+                        },
+                      ),
                       IconButton(
                         tooltip: 'Select source',
                         icon: const Icon(Icons.filter_list),

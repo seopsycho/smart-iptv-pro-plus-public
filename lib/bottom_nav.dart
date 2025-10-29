@@ -64,6 +64,10 @@ class _BottomNavState extends State<BottomNav> {
               icon: Icon(FeatherIcons.film),
               label: 'Movies',
             ),
+            BottomNavigationBarItem(
+              icon: Icon(FeatherIcons.download),
+              label: 'Downloads',
+            ),
           ],
           currentIndex: _selectedIndex,
           onTap: onBarTapped,
