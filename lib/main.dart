@@ -15,7 +15,7 @@ Future<void> main() async {
   try {
     await dotenv.dotenv.load(fileName: ".env");
   } catch (_) {}
-final hasSources = await Sql.hasSources();
+  final hasSources = await Sql.hasSources();
   final settings = await SettingsService.getSettings();
   final hasSeenOnboarding = await SettingsService.getHasSeenOnboarding();
   runApp(MyApp(
@@ -177,7 +177,7 @@ class MyApp extends StatelessWidget {
             : (skipSetup
                 ? Home(
                     firstLaunch: true,
-                    refresh: settings.refreshOnStart,
+                    refresh: settings.isRefreshDueNow(),
                     home: HomeManager(
                         filters: Filters(
                       viewType: settings.defaultView,

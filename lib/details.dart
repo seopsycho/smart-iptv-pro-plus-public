@@ -74,8 +74,8 @@ class _DetailsPageState extends State<DetailsPage> {
       await DownloadsService.startDownload(widget.channel);
       await _loadDownload();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Download started')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Download started')));
       }
     } finally {
       if (mounted) setState(() => _dlLoading = false);
@@ -113,7 +113,7 @@ class _DetailsPageState extends State<DetailsPage> {
           };
         });
       }
-      final anyActive = all.any((x) => x.status == 0);
+      final anyActive = all.any((x) => x.status == 0 || x.status == 3);
       if (!anyActive) {
         _dlTimer?.cancel();
         _dlTimer = null;
@@ -131,8 +131,9 @@ class _DetailsPageState extends State<DetailsPage> {
         .toList();
     if (channels.isEmpty) return;
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Starting downloads for season ${_selectedSeason!} (${channels.length})')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'Starting downloads for season ${_selectedSeason!} (${channels.length})')));
     }
     for (final ch in channels) {
       unawaited(DownloadsService.startDownload(ch));
@@ -164,7 +165,8 @@ class _DetailsPageState extends State<DetailsPage> {
           ? await tmdb.searchMovie(widget.channel.name)
           : await tmdb.searchSeries(widget.channel.name);
       if (tmdbItem != null) {
-        final key = await tmdb.getTrailerYoutubeKey(tmdbItem.id, isSeries: tmdbItem.isSeries);
+        final key = await tmdb.getTrailerYoutubeKey(tmdbItem.id,
+            isSeries: tmdbItem.isSeries);
         if (mounted) setState(() => trailerKey = key);
       }
     }
@@ -205,14 +207,22 @@ class _DetailsPageState extends State<DetailsPage> {
             if (p != null && p.trim().isNotEmpty) {
               if (mounted) setState(() => _playlistPlot = p);
             }
-            final mi = (info['movie_image'] ?? info['cover'] ?? info['backdrop_path'])?.toString();
+            final mi =
+                (info['movie_image'] ?? info['cover'] ?? info['backdrop_path'])
+                    ?.toString();
             if (mi != null && mi.isNotEmpty) {
               if (mounted) setState(() => poster = mi);
             }
             // Rating / Year / Duration / Genres from playlist
             final ratingStr = info['rating']?.toString();
-            final yearStr = (info['year'] ?? info['releaseDate'] ?? info['release_date'])?.toString();
-            final durationStr = (info['runtime'] ?? info['duration'] ?? info['duration_minutes'] ?? info['duration_secs'])?.toString();
+            final yearStr =
+                (info['year'] ?? info['releaseDate'] ?? info['release_date'])
+                    ?.toString();
+            final durationStr = (info['runtime'] ??
+                    info['duration'] ??
+                    info['duration_minutes'] ??
+                    info['duration_secs'])
+                ?.toString();
             final genreStr = info['genre']?.toString();
             double? pr = double.tryParse(ratingStr ?? '');
             int? py;
@@ -223,9 +233,12 @@ class _DetailsPageState extends State<DetailsPage> {
             int? pd;
             if (durationStr != null) {
               // accept minutes or seconds; attempt to parse
-              final n = int.tryParse(RegExp(r"(\\d+)").firstMatch(durationStr)?.group(1) ?? '');
+              final n = int.tryParse(
+                  RegExp(r"(\\d+)").firstMatch(durationStr)?.group(1) ?? '');
               if (n != null) {
-                if ((durationStr.toLowerCase().contains('sec') || durationStr.endsWith('s')) && n > 0) {
+                if ((durationStr.toLowerCase().contains('sec') ||
+                        durationStr.endsWith('s')) &&
+                    n > 0) {
                   pd = (n / 60).round();
                 } else {
                   pd = n;
@@ -233,7 +246,11 @@ class _DetailsPageState extends State<DetailsPage> {
               }
             }
             final pg = (genreStr != null && genreStr.trim().isNotEmpty)
-                ? genreStr.split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList()
+                ? genreStr
+                    .split(',')
+                    .map((x) => x.trim())
+                    .where((x) => x.isNotEmpty)
+                    .toList()
                 : <String>[];
             if (mounted) {
               setState(() {
@@ -291,13 +308,19 @@ class _DetailsPageState extends State<DetailsPage> {
         if (p != null && p.trim().isNotEmpty) {
           _playlistPlot = p;
         }
-        final mi = (m['cover'] ?? m['movie_image'] ?? m['backdrop_path'])?.toString();
+        final mi =
+            (m['cover'] ?? m['movie_image'] ?? m['backdrop_path'])?.toString();
         if (mi != null && mi.isNotEmpty) {
           poster = mi;
         }
         final ratingStr = m['rating']?.toString();
-        final yearStr = (m['year'] ?? m['releaseDate'] ?? m['release_date'])?.toString();
-        final durationStr = (m['runtime'] ?? m['duration'] ?? m['duration_minutes'] ?? m['duration_secs'])?.toString();
+        final yearStr =
+            (m['year'] ?? m['releaseDate'] ?? m['release_date'])?.toString();
+        final durationStr = (m['runtime'] ??
+                m['duration'] ??
+                m['duration_minutes'] ??
+                m['duration_secs'])
+            ?.toString();
         final genreStr = m['genre']?.toString();
         double? pr = double.tryParse(ratingStr ?? '');
         int? py;
@@ -307,9 +330,12 @@ class _DetailsPageState extends State<DetailsPage> {
         }
         int? pd;
         if (durationStr != null) {
-          final n = int.tryParse(RegExp(r"(\\d+)").firstMatch(durationStr)?.group(1) ?? '');
+          final n = int.tryParse(
+              RegExp(r"(\\d+)").firstMatch(durationStr)?.group(1) ?? '');
           if (n != null) {
-            if ((durationStr.toLowerCase().contains('sec') || durationStr.endsWith('s')) && n > 0) {
+            if ((durationStr.toLowerCase().contains('sec') ||
+                    durationStr.endsWith('s')) &&
+                n > 0) {
               pd = (n / 60).round();
             } else {
               pd = n;
@@ -317,7 +343,11 @@ class _DetailsPageState extends State<DetailsPage> {
           }
         }
         final pg = (genreStr != null && genreStr.trim().isNotEmpty)
-            ? genreStr.split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList()
+            ? genreStr
+                .split(',')
+                .map((x) => x.trim())
+                .where((x) => x.isNotEmpty)
+                .toList()
             : <String>[];
         _playlistRating = pr;
         _playlistYear = py;
@@ -396,7 +426,8 @@ class _DetailsPageState extends State<DetailsPage> {
                       .map((s) => ChoiceChip(
                             label: Text('Season $s'),
                             selected: _selectedSeason == s,
-                            onSelected: (_) => setState(() => _selectedSeason = s),
+                            onSelected: (_) =>
+                                setState(() => _selectedSeason = s),
                           ))
                       .toList(),
                 ),
@@ -411,9 +442,13 @@ class _DetailsPageState extends State<DetailsPage> {
                         final xe = _episodesBySeason[_selectedSeason]![index];
                         final sNum = int.tryParse(xe.season) ?? 0;
                         final eNum = int.tryParse(xe.episodeNum) ?? 0;
-                        final prefix = 'S${sNum.toString().padLeft(2, '0')}E${eNum.toString().padLeft(2, '0')}';
-                        final titleText = xe.title.trim().isEmpty ? prefix : '$prefix · ${xe.title.trim()}';
-                        final ch = _episodeByStreamId[int.tryParse(xe.id) ?? -1];
+                        final prefix =
+                            'S${sNum.toString().padLeft(2, '0')}E${eNum.toString().padLeft(2, '0')}';
+                        final titleText = xe.title.trim().isEmpty
+                            ? prefix
+                            : '$prefix · ${xe.title.trim()}';
+                        final ch =
+                            _episodeByStreamId[int.tryParse(xe.id) ?? -1];
                         final img = ch?.image ?? xe.info?.movieImage;
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -423,13 +458,21 @@ class _DetailsPageState extends State<DetailsPage> {
                               width: 100,
                               height: 56,
                               child: (img?.trim().isNotEmpty ?? false)
-                                  ? CachedNetworkImage(imageUrl: img!.trim(), fit: BoxFit.cover)
-                                  : Container(color: Theme.of(context).colorScheme.surfaceContainer, child: const Icon(FeatherIcons.image)),
+                                  ? CachedNetworkImage(
+                                      imageUrl: img!.trim(), fit: BoxFit.cover)
+                                  : Container(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainer,
+                                      child: const Icon(FeatherIcons.image)),
                             ),
                           ),
-                          title: Text(titleText, style: Theme.of(context).textTheme.titleSmall),
-                          subtitle: (xe.info?.plot != null && xe.info!.plot!.trim().isNotEmpty)
-                              ? Text(xe.info!.plot!, maxLines: 2, overflow: TextOverflow.ellipsis)
+                          title: Text(titleText,
+                              style: Theme.of(context).textTheme.titleSmall),
+                          subtitle: (xe.info?.plot != null &&
+                                  xe.info!.plot!.trim().isNotEmpty)
+                              ? Text(xe.info!.plot!,
+                                  maxLines: 2, overflow: TextOverflow.ellipsis)
                               : null,
                           trailing: IconButton(
                             icon: const Icon(FeatherIcons.play),
@@ -438,15 +481,19 @@ class _DetailsPageState extends State<DetailsPage> {
                               if (ch != null) {
                                 await _play(ch);
                               } else if (_source != null) {
-                                final url = getUrl(xe.id, _source!, MediaType.serie, xe.containerExtension);
+                                final url = getUrl(xe.id, _source!,
+                                    MediaType.serie, xe.containerExtension);
                                 final epChannel = Channel(
-                                  name: xe.title.trim().isEmpty ? 'Episode ${eNum}' : xe.title.trim(),
+                                  name: xe.title.trim().isEmpty
+                                      ? 'Episode ${eNum}'
+                                      : xe.title.trim(),
                                   mediaType: MediaType.movie,
                                   sourceId: widget.channel.sourceId,
                                   favorite: false,
                                   image: img,
                                   url: url,
-                                  seriesId: int.tryParse(widget.channel.url ?? ''),
+                                  seriesId:
+                                      int.tryParse(widget.channel.url ?? ''),
                                   streamId: int.tryParse(xe.id),
                                 );
                                 Navigator.push(
@@ -472,14 +519,18 @@ class _DetailsPageState extends State<DetailsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final hasImage = (widget.channel.image?.trim().isNotEmpty ?? false) || (poster != null);
-    final title = _tmdbDetails?.title ?? _omdbDetails?.title ?? widget.channel.name;
+    final hasImage =
+        (widget.channel.image?.trim().isNotEmpty ?? false) || (poster != null);
+    final title =
+        _tmdbDetails?.title ?? _omdbDetails?.title ?? widget.channel.name;
     final year = _playlistYear ?? _omdbDetails?.year ?? _tmdbDetails?.year;
-    final duration = _playlistDuration ?? _omdbDetails?.duration ?? _tmdbDetails?.duration;
+    final duration =
+        _playlistDuration ?? _omdbDetails?.duration ?? _tmdbDetails?.duration;
     final genres = _playlistGenres.isNotEmpty
         ? _playlistGenres
         : (_omdbDetails?.genres ?? _tmdbDetails?.genres ?? const <String>[]);
-    final rating = _playlistRating ?? _omdbDetails?.rating ?? _tmdbDetails?.rating;
+    final rating =
+        _playlistRating ?? _omdbDetails?.rating ?? _tmdbDetails?.rating;
     final desc = (_playlistPlot != null && _playlistPlot!.trim().isNotEmpty)
         ? _playlistPlot!.trim()
         : ((_omdbDetails?.plot != null && _omdbDetails!.plot.trim().isNotEmpty)
@@ -507,9 +558,10 @@ class _DetailsPageState extends State<DetailsPage> {
                     children: [
                       Positioned.fill(
                         child: CachedNetworkImage(
-                          imageUrl: (widget.channel.image?.trim().isNotEmpty ?? false)
-                              ? widget.channel.image!.trim()
-                              : (poster ?? ''),
+                          imageUrl:
+                              (widget.channel.image?.trim().isNotEmpty ?? false)
+                                  ? widget.channel.image!.trim()
+                                  : (poster ?? ''),
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -541,8 +593,10 @@ class _DetailsPageState extends State<DetailsPage> {
                   if (trailerKey != null)
                     OutlinedButton.icon(
                         onPressed: () async {
-                          final uri = Uri.parse('https://www.youtube.com/watch?v=$trailerKey');
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          final uri = Uri.parse(
+                              'https://www.youtube.com/watch?v=$trailerKey');
+                          await launchUrl(uri,
+                              mode: LaunchMode.externalApplication);
                         },
                         icon: const Icon(FeatherIcons.film),
                         label: const Text('Trailer')),
@@ -561,7 +615,11 @@ class _DetailsPageState extends State<DetailsPage> {
                       }
                       if (_download != null && _download!.status == 0) {
                         final hasTotal = _download!.totalBytes > 0;
-                        final pct = hasTotal ? (_download!.progress * 100).clamp(0, 100).toStringAsFixed(0) : null;
+                        final pct = hasTotal
+                            ? (_download!.progress * 100)
+                                .clamp(0, 100)
+                                .toStringAsFixed(0)
+                            : null;
                         return OutlinedButton.icon(
                           onPressed: null,
                           icon: const SizedBox(
@@ -570,6 +628,13 @@ class _DetailsPageState extends State<DetailsPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                           label: Text(hasTotal ? '$pct%' : 'Downloading...'),
+                        );
+                      }
+                      if (_download != null && _download!.status == 3) {
+                        return OutlinedButton.icon(
+                          onPressed: null,
+                          icon: const Icon(FeatherIcons.clock),
+                          label: const Text('Queued'),
                         );
                       }
                       if (_download != null && _download!.completed) {
@@ -591,7 +656,9 @@ class _DetailsPageState extends State<DetailsPage> {
                         FeatherIcons.heart,
                         color: _favorite ? const Color(0xFFE50914) : null,
                       ),
-                      label: Text(_favorite ? 'Added to watchlist' : 'Add to watchlist')),
+                      label: Text(_favorite
+                          ? 'Added to watchlist'
+                          : 'Add to watchlist')),
                 ],
               ),
               const SizedBox(height: 12),
@@ -599,7 +666,8 @@ class _DetailsPageState extends State<DetailsPage> {
                 children: [
                   if (rating != null)
                     Row(children: [
-                      const Icon(FeatherIcons.star, color: Color(0xFFE50914), size: 20),
+                      const Icon(FeatherIcons.star,
+                          color: Color(0xFFE50914), size: 20),
                       const SizedBox(width: 6),
                       Text(rating.toStringAsFixed(1)),
                     ]),
@@ -615,7 +683,8 @@ class _DetailsPageState extends State<DetailsPage> {
               ),
               const SizedBox(height: 8),
               if (_sourceName != null)
-                Text('Playlist: ${_sourceName!}', style: Theme.of(context).textTheme.bodyMedium),
+                Text('Playlist: ${_sourceName!}',
+                    style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 10),
               if (genres.isNotEmpty)
                 Wrap(
@@ -624,8 +693,10 @@ class _DetailsPageState extends State<DetailsPage> {
                   children: genres
                       .map((g) => Chip(
                             label: Text(g),
-                            side: BorderSide(color: Theme.of(context).colorScheme.outline),
-                            backgroundColor: Theme.of(context).colorScheme.surface,
+                            side: BorderSide(
+                                color: Theme.of(context).colorScheme.outline),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.surface,
                           ))
                       .toList(),
                 ),
@@ -633,7 +704,8 @@ class _DetailsPageState extends State<DetailsPage> {
               if (desc.trim().isNotEmpty) Text(desc),
               const SizedBox(height: 20),
               if (widget.channel.mediaType == MediaType.serie) ...[
-                Text('Seasons / Episodes', style: Theme.of(context).textTheme.titleLarge),
+                Text('Seasons / Episodes',
+                    style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
                 if (_episodesLoading)
                   const Center(child: CircularProgressIndicator())
@@ -649,7 +721,8 @@ class _DetailsPageState extends State<DetailsPage> {
                                 child: ChoiceChip(
                                   label: Text('Season $s'),
                                   selected: _selectedSeason == s,
-                                  onSelected: (_) => setState(() => _selectedSeason = s),
+                                  onSelected: (_) =>
+                                      setState(() => _selectedSeason = s),
                                 ),
                               ))
                           .toList(),
@@ -677,9 +750,13 @@ class _DetailsPageState extends State<DetailsPage> {
                         final xe = _episodesBySeason[_selectedSeason]![index];
                         final sNum = int.tryParse(xe.season) ?? 0;
                         final eNum = int.tryParse(xe.episodeNum) ?? 0;
-                        final prefix = 'S${sNum.toString().padLeft(2, '0')}E${eNum.toString().padLeft(2, '0')}';
-                        final titleText = xe.title.trim().isEmpty ? prefix : '$prefix · ${xe.title.trim()}';
-                        final ch = _episodeByStreamId[int.tryParse(xe.id) ?? -1];
+                        final prefix =
+                            'S${sNum.toString().padLeft(2, '0')}E${eNum.toString().padLeft(2, '0')}';
+                        final titleText = xe.title.trim().isEmpty
+                            ? prefix
+                            : '$prefix · ${xe.title.trim()}';
+                        final ch =
+                            _episodeByStreamId[int.tryParse(xe.id) ?? -1];
                         final img = ch?.image ?? xe.info?.movieImage;
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -689,13 +766,21 @@ class _DetailsPageState extends State<DetailsPage> {
                               width: 100,
                               height: 56,
                               child: (img?.trim().isNotEmpty ?? false)
-                                  ? CachedNetworkImage(imageUrl: img!.trim(), fit: BoxFit.cover)
-                                  : Container(color: Theme.of(context).colorScheme.surfaceContainer, child: const Icon(FeatherIcons.image)),
+                                  ? CachedNetworkImage(
+                                      imageUrl: img!.trim(), fit: BoxFit.cover)
+                                  : Container(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainer,
+                                      child: const Icon(FeatherIcons.image)),
                             ),
                           ),
-                          title: Text(titleText, style: Theme.of(context).textTheme.titleSmall),
-                          subtitle: (xe.info?.plot != null && xe.info!.plot!.trim().isNotEmpty)
-                              ? Text(xe.info!.plot!, maxLines: 2, overflow: TextOverflow.ellipsis)
+                          title: Text(titleText,
+                              style: Theme.of(context).textTheme.titleSmall),
+                          subtitle: (xe.info?.plot != null &&
+                                  xe.info!.plot!.trim().isNotEmpty)
+                              ? Text(xe.info!.plot!,
+                                  maxLines: 2, overflow: TextOverflow.ellipsis)
                               : null,
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -706,15 +791,19 @@ class _DetailsPageState extends State<DetailsPage> {
                                   if (ch != null) {
                                     await _play(ch);
                                   } else if (_source != null) {
-                                    final url = getUrl(xe.id, _source!, MediaType.serie, xe.containerExtension);
+                                    final url = getUrl(xe.id, _source!,
+                                        MediaType.serie, xe.containerExtension);
                                     final epChannel = Channel(
-                                      name: xe.title.trim().isEmpty ? 'Episode ${eNum}' : xe.title.trim(),
+                                      name: xe.title.trim().isEmpty
+                                          ? 'Episode ${eNum}'
+                                          : xe.title.trim(),
                                       mediaType: MediaType.movie,
                                       sourceId: widget.channel.sourceId,
                                       favorite: false,
                                       image: img,
                                       url: url,
-                                      seriesId: int.tryParse(widget.channel.url ?? ''),
+                                      seriesId: int.tryParse(
+                                          widget.channel.url ?? ''),
                                       streamId: int.tryParse(xe.id),
                                     );
                                     Navigator.push(
@@ -733,8 +822,12 @@ class _DetailsPageState extends State<DetailsPage> {
                                     return const SizedBox(
                                       width: 24,
                                       height: 24,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
                                     );
+                                  }
+                                  if (di != null && di.status == 3) {
+                                    return const Icon(FeatherIcons.clock);
                                   }
                                   if (di != null && di.completed) {
                                     return const Icon(FeatherIcons.check);
@@ -744,8 +837,10 @@ class _DetailsPageState extends State<DetailsPage> {
                                     onPressed: () async {
                                       await DownloadsService.startDownload(ch);
                                       if (!mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Download started')));
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(const SnackBar(
+                                              content:
+                                                  Text('Download started')));
                                     },
                                   );
                                 }(),
@@ -769,7 +864,8 @@ class _DetailsPageState extends State<DetailsPage> {
 class TmdbDetailsPage extends StatefulWidget {
   final TmdbItem item;
   final List<int> sourceIds;
-  const TmdbDetailsPage({super.key, required this.item, required this.sourceIds});
+  const TmdbDetailsPage(
+      {super.key, required this.item, required this.sourceIds});
 
   @override
   State<TmdbDetailsPage> createState() => _TmdbDetailsPageState();
@@ -788,7 +884,8 @@ class _TmdbDetailsPageState extends State<TmdbDetailsPage> {
     final settings = await SettingsService.getSettings();
     if (settings.tmdbApiKey.isEmpty) return;
     final tmdb = TmdbService(apiKey: settings.tmdbApiKey);
-    final key = await tmdb.getTrailerYoutubeKey(widget.item.id, isSeries: widget.item.isSeries);
+    final key = await tmdb.getTrailerYoutubeKey(widget.item.id,
+        isSeries: widget.item.isSeries);
     if (mounted) setState(() => trailerKey = key);
   }
 
@@ -848,8 +945,10 @@ class _TmdbDetailsPageState extends State<TmdbDetailsPage> {
                   if (trailerKey != null)
                     OutlinedButton.icon(
                         onPressed: () async {
-                          final uri = Uri.parse('https://www.youtube.com/watch?v=$trailerKey');
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          final uri = Uri.parse(
+                              'https://www.youtube.com/watch?v=$trailerKey');
+                          await launchUrl(uri,
+                              mode: LaunchMode.externalApplication);
                         },
                         icon: const Icon(Icons.movie),
                         label: const Text('Watch Trailer'))

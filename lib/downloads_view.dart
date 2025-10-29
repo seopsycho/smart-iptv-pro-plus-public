@@ -41,7 +41,7 @@ class _DownloadsViewState extends State<DownloadsView> {
     final file = File(di.filePath);
     if (!(await file.exists())) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('File missing. Removing from downloads.')), 
+        const SnackBar(content: Text('File missing. Removing from downloads.')),
       );
       await DownloadsService.removeDownload(di.channel.id!);
       await _load();
@@ -65,7 +65,7 @@ class _DownloadsViewState extends State<DownloadsView> {
   }
 
   void _ensureTicker() {
-    final active = items.any((d) => d.status == 0);
+    final active = items.any((d) => d.status == 0 || d.status == 3);
     if (active && _timer == null) {
       _timer = Timer.periodic(const Duration(milliseconds: 800), (_) async {
         final list = await Sql.getAllDownloads();
@@ -101,11 +101,16 @@ class _DownloadsViewState extends State<DownloadsView> {
         final image = di.channel.image;
         final hasTotal = di.totalBytes > 0;
         final isFailed = di.status == 2;
+        final isQueued = di.status == 3;
         final sub = di.completed
             ? 'Completed'
             : isFailed
                 ? 'Failed'
-                : (hasTotal ? '${((di.progress) * 100).toStringAsFixed(0)}%' : 'Downloading...');
+                : isQueued
+                    ? 'Queued'
+                    : (hasTotal
+                        ? '${((di.progress) * 100).toStringAsFixed(0)}%'
+                        : 'Downloading...');
         return ListTile(
           leading: ClipRRect(
             borderRadius: BorderRadius.circular(8),
@@ -130,7 +135,7 @@ class _DownloadsViewState extends State<DownloadsView> {
             children: [
               IconButton(
                 icon: const Icon(Icons.play_arrow),
-                onPressed: (!isFailed && di.completed) ? () => _play(di) : null,
+                onPressed: di.completed ? () => _play(di) : null,
               ),
               IconButton(
                 icon: const Icon(Icons.delete),

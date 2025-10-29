@@ -28,7 +28,7 @@ class _OnboardingState extends State<Onboarding> {
           MaterialPageRoute(
               builder: (context) => Home(
                     firstLaunch: true,
-                    refresh: widget.settings.refreshOnStart,
+                    refresh: widget.settings.isRefreshDueNow(),
                     home: HomeManager(
                         filters:
                             Filters(viewType: widget.settings.defaultView)),

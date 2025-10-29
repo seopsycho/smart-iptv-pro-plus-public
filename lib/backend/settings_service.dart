@@ -7,7 +7,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
 
 const defaultView = "defaultView";
-const refreshOnStart = "refreshOnStart";
+const refreshOnStart = "refreshOnStart"; // legacy
+const refreshInterval = "refreshInterval"; // hours: 0,24,48,72
+const lastRefresh = "lastRefresh"; // epoch seconds
 const showLivestreams = "showLivestreams";
 const showMovies = "showMovies";
 const showSeries = "showSeries";
@@ -21,15 +23,22 @@ class SettingsService {
     var settingsMap = await Sql.getSettings();
     var settings = Settings();
     var view = settingsMap[defaultView];
-    var refresh = settingsMap[refreshOnStart];
+    var interval = settingsMap[refreshInterval];
+    var legacyRefresh = settingsMap[refreshOnStart];
+    var last = settingsMap[lastRefresh];
     var live = settingsMap[showLivestreams];
     var movies = settingsMap[showMovies];
     var series = settingsMap[showSeries];
     if (view != null) {
       settings.defaultView = ViewType.values[int.parse(view)];
     }
-    if (refresh != null) {
-      settings.refreshOnStart = int.parse(refresh) == 1;
+    if (interval != null) {
+      settings.refreshIntervalHours = int.tryParse(interval) ?? 72;
+    } else if (legacyRefresh != null) {
+      settings.refreshIntervalHours = int.parse(legacyRefresh) == 1 ? 0 : 72;
+    }
+    if (last != null && last.isNotEmpty) {
+      settings.lastRefreshEpochSec = int.tryParse(last) ?? 0;
     }
     if (live != null) {
       settings.showLivestreams = int.parse(live) == 1;
@@ -40,9 +49,8 @@ class SettingsService {
     if (series != null) {
       settings.showSeries = int.parse(series) == 1;
     }
-    final tmdbFromEnv = dotenv.dotenv.isInitialized
-        ? dotenv.dotenv.env['TMDB_API_KEY']
-        : null;
+    final tmdbFromEnv =
+        dotenv.dotenv.isInitialized ? dotenv.dotenv.env['TMDB_API_KEY'] : null;
     final tmdb = settingsMap[tmdbApiKey] ?? tmdbFromEnv;
     if (tmdb != null && tmdb.isNotEmpty) {
       settings.tmdbApiKey = tmdb;
@@ -57,7 +65,7 @@ class SettingsService {
   static Future<void> updateSettings(Settings settings) async {
     HashMap<String, String> settingsMap = HashMap();
     settingsMap[defaultView] = settings.defaultView.index.toString();
-    settingsMap[refreshOnStart] = (settings.refreshOnStart ? 1 : 0).toString();
+    settingsMap[refreshInterval] = settings.refreshIntervalHours.toString();
     settingsMap[showLivestreams] =
         (settings.showLivestreams ? 1 : 0).toString();
     settingsMap[showMovies] = (settings.showMovies ? 1 : 0).toString();
@@ -66,6 +74,13 @@ class SettingsService {
     settingsMap[tmdbApiKey] = settings.tmdbApiKey;
     settingsMap[metadataProvider] = settings.metadataProvider;
     await Sql.updateSettings(settingsMap);
+  }
+
+  static Future<void> updateLastRefreshToNow() async {
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    HashMap<String, String> map = HashMap();
+    map[lastRefresh] = nowSec.toString();
+    await Sql.updateSettings(map);
   }
 
   static Future<void> updateLastSeenVersion() async {

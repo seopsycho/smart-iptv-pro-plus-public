@@ -40,6 +40,7 @@ class _SettingsState extends State<SettingsView> {
       return 'https://example.com/source';
     }
   }
+
   @override
   void initState() {
     super.initState();
@@ -287,21 +288,33 @@ class _SettingsState extends State<SettingsView> {
                             onTap: _showTmdbKeyDialog,
                           ),
                           ListTile(
-                            title: const Text("Refresh sources on start"),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Switch(
-                                  value: settings.refreshOnStart,
-                                  onChanged: (bool value) {
-                                    setState(() {
-                                      settings.refreshOnStart = value;
-                                    });
-                                    updateSettings();
-                                  },
-                                ),
-                              ],
-                            ),
+                            title: const Text("Auto-refresh sources"),
+                            subtitle: Text(settings.refreshIntervalHours == 0
+                                ? 'Every start'
+                                : 'Every ${settings.refreshIntervalHours} hours'),
+                            onTap: () async {
+                              await showDialog(
+                                barrierDismissible: true,
+                                context: context,
+                                builder: (BuildContext context) {
+                                  return SelectDialog(
+                                      title: "Auto-refresh schedule",
+                                      data: [
+                                        IdData(id: 0, data: 'Every start'),
+                                        IdData(id: 24, data: 'Every 24 hours'),
+                                        IdData(id: 48, data: 'Every 48 hours'),
+                                        IdData(id: 72, data: 'Every 72 hours'),
+                                      ],
+                                      action: (h) async {
+                                        setState(() {
+                                          settings.refreshIntervalHours = h;
+                                        });
+                                        await updateSettings();
+                                        Navigator.of(context).pop();
+                                      });
+                                },
+                              );
+                            },
                           ),
                           ListTile(
                             title: const Text("Show livestreams"),
@@ -357,16 +370,19 @@ class _SettingsState extends State<SettingsView> {
                           const Divider(),
                           ListTile(
                             title: const Text('Downloads'),
-                            subtitle: const Text('View and manage downloaded items'),
+                            subtitle:
+                                const Text('View and manage downloaded items'),
                             trailing: const Icon(Icons.download),
                             onTap: () async {
                               await Navigator.push(
                                 context,
                                 PageRouteBuilder(
-                                  pageBuilder: (_, __, ___) => const DownloadsView(),
+                                  pageBuilder: (_, __, ___) =>
+                                      const DownloadsView(),
                                   transitionDuration: Duration.zero,
                                   reverseTransitionDuration: Duration.zero,
-                                  transitionsBuilder: (context, a, b, child) => child,
+                                  transitionsBuilder: (context, a, b, child) =>
+                                      child,
                                 ),
                               );
                             },
@@ -379,10 +395,17 @@ class _SettingsState extends State<SettingsView> {
                                 context: context,
                                 builder: (_) => AlertDialog(
                                   title: const Text('Clear all downloads?'),
-                                  content: const Text('This will delete all downloaded files from your device.'),
+                                  content: const Text(
+                                      'This will delete all downloaded files from your device.'),
                                   actions: [
-                                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                    TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Clear')),
+                                    TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text('Cancel')),
+                                    TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: const Text('Clear')),
                                   ],
                                 ),
                               );
@@ -390,7 +413,8 @@ class _SettingsState extends State<SettingsView> {
                                 await DownloadsService.clearAllDownloads();
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Cleared downloads')),
+                                    const SnackBar(
+                                        content: Text('Cleared downloads')),
                                   );
                                 }
                               }

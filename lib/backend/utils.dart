@@ -5,6 +5,7 @@ import 'package:smart_iptv_pro/backend/xtream.dart';
 import 'package:smart_iptv_pro/memory.dart';
 import 'package:smart_iptv_pro/models/source.dart';
 import 'package:smart_iptv_pro/models/source_type.dart';
+import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -58,5 +59,6 @@ class Utils {
     for (var source in sources) {
       await refreshSource(source);
     }
+    await SettingsService.updateLastRefreshToNow();
   }
 }

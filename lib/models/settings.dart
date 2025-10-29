@@ -3,7 +3,8 @@ import 'package:smart_iptv_pro/models/view_type.dart';
 
 class Settings {
   ViewType defaultView;
-  bool refreshOnStart;
+  int refreshIntervalHours;
+  int lastRefreshEpochSec;
   bool showLivestreams;
   bool showMovies;
   bool showSeries;
@@ -11,7 +12,8 @@ class Settings {
   String metadataProvider; // 'omdb' (default) or 'tmdb'
   Settings(
       {this.defaultView = ViewType.all,
-      this.refreshOnStart = false,
+      this.refreshIntervalHours = 72,
+      this.lastRefreshEpochSec = 0,
       this.showLivestreams = true,
       this.showMovies = true,
       this.showSeries = true,
@@ -24,5 +26,12 @@ class Settings {
       if (showMovies) MediaType.movie,
       if (showSeries) MediaType.serie
     ];
+  }
+
+  bool isRefreshDueNow() {
+    if (refreshIntervalHours == 0) return true;
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (lastRefreshEpochSec == 0) return true;
+    return nowSec - lastRefreshEpochSec >= refreshIntervalHours * 3600;
   }
 }
