@@ -35,6 +35,7 @@ flutter build ios --release --no-codesign
 
 # Ensure CocoaPods dependencies are installed and filelists are generated
 pushd ios
+pod deintegrate || true
 pod install --repo-update
 # Verify the problematic filelists exist (if CocoaPods still uses them)
 ls -la "Pods/Target Support Files/Pods-Runner/" || true

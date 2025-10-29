@@ -8,29 +8,40 @@ class WhatsNewModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-        title: Text("What's new: update $version"),
-        actions: [
-          TextButton(
-              onPressed: () async {
-                await SettingsService.updateLastSeenVersion();
-                Navigator.pop(context, true);
-              },
-              child: const Text("Don't show again"))
-        ],
-        content: Scrollbar(
-          thumbVisibility: true,
-          child: SingleChildScrollView(
-              child: const Padding(
-                  padding: EdgeInsets.only(right: 8.0),
-                  child: const Text(
-                    '''
-Hi! Thanks for supporting Fred TV. Here's everything new:
+      title: Text("What's new: update $version"),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            await SettingsService.updateLastSeenVersion();
+            Navigator.pop(context, true);
+          },
+          child: const Text("Don't show again"),
+        )
+      ],
+      content: Scrollbar(
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          child: const Padding(
+            padding: EdgeInsets.only(right: 8.0),
+            child: Text(
+              '''
+Thanks for supporting SmartIPTV PRO+!
 
-- Changed name from Open TV to Fred TV due to trademark dispute, sorry!
+We’re committed to giving you the best possible experience.
 
-Thanks for using Fred TV! Report issues on the github and share it with your friends.
+Here’s what’s new:
+- Added category sorting & hiding features
+- Added Watchlists
+- Integrated TMDB for personalized recommendations
+
+Coming soon:
+- Trakt integration
+- Live scores for sports and sport programs
 ''',
-                  ))),
-        ));
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

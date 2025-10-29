@@ -43,5 +43,23 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.shell_script_build_phases.each do |phase|
+      if phase.display_name == 'Embed Pods Frameworks'
+        phase.input_file_list_paths = []
+        phase.output_file_list_paths = []
+      end
+    end
+  end
+  # Ensure user project (Runner) [CP] phases do not use xcfilelists
+  installer.aggregate_targets.each do |aggregate_target|
+    aggregate_target.user_targets.each do |user_target|
+      user_target.shell_script_build_phases.each do |phase|
+        name = phase.name.to_s
+        if name.include?('Embed Pods Frameworks') || name.include?('Copy Pods Resources')
+          phase.input_file_list_paths = []
+          phase.output_file_list_paths = []
+        end
+      end
+    end
   end
 end

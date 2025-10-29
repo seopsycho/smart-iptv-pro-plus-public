@@ -250,6 +250,7 @@ class _DetailsPageState extends State<DetailsPage> {
   Future<void> _toggleFavorite() async {
     await Sql.favoriteChannel(widget.channel.id!, !_favorite);
     if (mounted) setState(() => _favorite = !_favorite);
+    widget.channel.favorite = _favorite;
   }
 
   Future<void> _play(Channel channel) async {

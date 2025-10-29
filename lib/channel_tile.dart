@@ -91,12 +91,13 @@ class _ChannelTileState extends State<ChannelTile> {
           type: fromMediaType(widget.channel.mediaType)));
       return;
     }
-    Navigator.push(
+    await Navigator.push(
         context,
         MaterialPageRoute(
             builder: (_) => DetailsPage(
                   channel: widget.channel,
                 )));
+    if (mounted) setState(() {});
   }
 
   @override

@@ -804,13 +804,14 @@ class _HomeState extends State<Home> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: InkWell(
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          await Navigator.push(
               context,
               MaterialPageRoute(
                   builder: (_) => DetailsPage(
                         channel: c,
                       )));
+          if (mounted) setState(() {});
         },
         child: SizedBox(
           width: 140,
@@ -820,15 +821,27 @@ class _HomeState extends State<Home> {
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: (c.image?.trim().isNotEmpty ?? false)
-                      ? CachedNetworkImage(
-                          imageUrl: c.image!.trim(),
-                          fit: BoxFit.cover,
-                        )
-                      : Container(
-                          color: Theme.of(context).colorScheme.surfaceContainer,
-                          child: const Icon(Icons.tv, size: 48),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: (c.image?.trim().isNotEmpty ?? false)
+                            ? CachedNetworkImage(
+                                imageUrl: c.image!.trim(),
+                                fit: BoxFit.cover,
+                              )
+                            : Container(
+                                color: Theme.of(context).colorScheme.surfaceContainer,
+                                child: const Icon(Icons.tv, size: 48),
+                              ),
+                      ),
+                      if (c.favorite)
+                        const Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Icon(Icons.favorite, color: Color(0xFFE50914)),
                         ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 6),
