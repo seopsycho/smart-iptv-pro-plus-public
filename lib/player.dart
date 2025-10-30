@@ -12,6 +12,8 @@ import 'package:media_kit_video/media_kit_video.dart' as mkvideo;
 import 'package:smart_iptv_pro/select_dialog.dart';
 import 'package:smart_iptv_pro/services/chromecast_service.dart';
 import 'package:smart_iptv_pro/chromecast_button.dart';
+import 'package:smart_iptv_pro/airplay_button.dart';
+import 'dart:io' show Platform;
 
 class Player extends StatefulWidget {
   final Channel channel;
@@ -28,6 +30,9 @@ class _PlayerState extends State<Player> {
   bool exiting = false;
   bool fill = false;
   String? _sourceName;
+
+  static const MethodChannel _airPlayCh =
+      MethodChannel('com.smartiptv.pro/airplay');
 
   @override
   void initState() {
@@ -137,6 +142,9 @@ class _PlayerState extends State<Player> {
     if (key.currentState!.isFullscreen()) {
       await key.currentState!.exitFullscreen();
     }
+    try {
+      await _airPlayCh.invokeMethod('stop');
+    } catch (_) {}
     Navigator.of(context).pop();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -155,6 +163,50 @@ class _PlayerState extends State<Player> {
     setState(() {
       fill = !fill;
     });
+  }
+
+  Future<void> airPlayToDevice() async {
+    try {
+      final id = widget.channel.id;
+      final headers = id != null ? await Sql.getChannelHeaders(id) : null;
+      final position = widget.channel.mediaType == MediaType.movie
+          ? player.state.position
+          : Duration.zero;
+      final connected = await _airPlayCh.invokeMethod('isConnected');
+      if (connected != true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Select an AirPlay device first.')));
+        return;
+      }
+      final args = {
+        'url': widget.channel.url!,
+        'startSeconds': position.inSeconds.toDouble(),
+        if (headers != null)
+          'headers': {
+            if (headers.referrer != null) 'Referer': headers.referrer!,
+            if (headers.httpOrigin != null) 'Origin': headers.httpOrigin!,
+            if (headers.userAgent != null) 'User-Agent': headers.userAgent!,
+          },
+      };
+      final ok = await _airPlayCh.invokeMethod('play', args);
+      if (!mounted) return;
+      if (ok == true) {
+        await player.pause();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ok == true
+              ? 'Playing via AirPlay...'
+              : 'Failed to play via AirPlay')));
+    } catch (e) {
+      if (!mounted) return;
+      String msg = 'AirPlay error: $e';
+      if (e is PlatformException && e.code == 'no_route') {
+        msg =
+            'No AirPlay device selected. Tap the AirPlay button to connect, then try again.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
   }
 
   Future<void> castToDevice() async {
@@ -245,6 +297,16 @@ class _PlayerState extends State<Player> {
             onPressed: toggleZoom,
           ),
           SizedBox(width: 20),
+          if (Platform.isIOS) ...[
+            AirPlayButton(),
+            SizedBox(width: 12),
+            IconButton(
+              tooltip: 'AirPlay',
+              onPressed: airPlayToDevice,
+              icon: const Icon(Icons.airplay, color: Colors.white, size: 32),
+            ),
+            SizedBox(width: 12),
+          ],
           ChromecastButton(width: 44, height: 44, tintColor: Colors.white),
         ]);
   }

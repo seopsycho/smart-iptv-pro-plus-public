@@ -1,6 +1,8 @@
 import Flutter
 import UIKit
 import GoogleCast
+import AVFoundation
+import AVKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -18,6 +20,12 @@ import GoogleCast
     if let registrar = self.registrar(forPlugin: "ChromecastChannel") {
       _ = ChromecastChannel.register(with: registrar.messenger())
     }
+    if let registrar = self.registrar(forPlugin: "AirPlayChannel") {
+      _ = AirPlayChannel.register(with: registrar.messenger())
+    }
+    let session = AVAudioSession.sharedInstance()
+    try? session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
+    try? session.setActive(true)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
@@ -131,3 +139,139 @@ class ChromecastChannel: NSObject {
   }
 }
 
+class AirPlayManager {
+  static let shared = AirPlayManager()
+  private init() {}
+  var player: AVPlayer?
+  var playerVC: AVPlayerViewController?
+
+  func isAirPlayConnected() -> Bool {
+    let route = AVAudioSession.sharedInstance().currentRoute
+    for output in route.outputs {
+      if output.portType == .airPlay { return true }
+    }
+    return false
+  }
+
+  func presentPlayer(on root: UIViewController, url: URL, headers: [String: String]?, startSeconds: Double) {
+    let asset: AVURLAsset
+    if let headers = headers, !headers.isEmpty {
+      asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+    } else {
+      asset = AVURLAsset(url: url)
+    }
+    let item = AVPlayerItem(asset: asset)
+    let player = AVPlayer(playerItem: item)
+    if startSeconds > 0 {
+      let t = CMTime(seconds: startSeconds, preferredTimescale: 600)
+      player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+    player.usesExternalPlaybackWhileExternalScreenIsActive = true
+
+    let vc = AVPlayerViewController()
+    vc.player = player
+    vc.modalPresentationStyle = .fullScreen
+    vc.entersFullScreenWhenPlaybackBegins = true
+    vc.exitsFullScreenWhenPlaybackEnds = true
+
+    self.player = player
+    self.playerVC = vc
+
+    root.present(vc, animated: true) {
+      player.play()
+    }
+  }
+
+  func dismissPlayer(completion: (() -> Void)? = nil) {
+    guard let vc = playerVC else { completion?(); return }
+    vc.dismiss(animated: true) {
+      self.player?.pause()
+      self.player = nil
+      self.playerVC = nil
+      completion?()
+    }
+  }
+}
+
+class AirPlayChannel: NSObject {
+  private let channel: FlutterMethodChannel
+
+  init(messenger: FlutterBinaryMessenger) {
+    self.channel = FlutterMethodChannel(name: "com.smartiptv.pro/airplay", binaryMessenger: messenger)
+    super.init()
+    self.channel.setMethodCallHandler(self.handle(_:result:))
+  }
+
+  static func register(with messenger: FlutterBinaryMessenger) -> AirPlayChannel {
+    AirPlayChannel(messenger: messenger)
+  }
+
+  private func topViewController() -> UIViewController? {
+    func top(from root: UIViewController?) -> UIViewController? {
+      if let nav = root as? UINavigationController { return top(from: nav.visibleViewController) }
+      if let tab = root as? UITabBarController { return top(from: tab.selectedViewController) }
+      if let presented = root?.presentedViewController { return top(from: presented) }
+      return root
+    }
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let keyWindow = scenes.first?.windows.first(where: { $0.isKeyWindow })
+    return top(from: keyWindow?.rootViewController)
+  }
+
+  private func ensureAudioSession() {
+    let session = AVAudioSession.sharedInstance()
+    try? session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
+    try? session.setActive(true)
+  }
+
+  private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "isConnected":
+      result(AirPlayManager.shared.isAirPlayConnected())
+    case "play":
+      guard let args = call.arguments as? [String: Any],
+            let urlStr = args["url"] as? String,
+            let url = URL(string: urlStr) else {
+        result(FlutterError(code: "bad_args", message: "Missing or invalid url", details: nil))
+        return
+      }
+      let startSeconds = (args["startSeconds"] as? Double) ?? 0.0
+      let headers = args["headers"] as? [String: String]
+      if !AirPlayManager.shared.isAirPlayConnected() {
+        result(FlutterError(code: "no_route", message: "No AirPlay route selected", details: nil))
+        return
+      }
+      guard let root = topViewController() else {
+        result(FlutterError(code: "no_ui", message: "Unable to find root view controller", details: nil))
+        return
+      }
+      ensureAudioSession()
+      DispatchQueue.main.async {
+        AirPlayManager.shared.presentPlayer(on: root, url: url, headers: headers, startSeconds: startSeconds)
+        result(true)
+      }
+    case "pause":
+      AirPlayManager.shared.player?.pause()
+      result(true)
+    case "resume":
+      AirPlayManager.shared.player?.play()
+      result(true)
+    case "seek":
+      guard let args = call.arguments as? [String: Any], let pos = args["positionSeconds"] as? Double else {
+        result(FlutterError(code: "bad_args", message: "Missing positionSeconds", details: nil))
+        return
+      }
+      let t = CMTime(seconds: pos, preferredTimescale: 600)
+      AirPlayManager.shared.player?.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+      result(true)
+    case "stop":
+      DispatchQueue.main.async {
+        AirPlayManager.shared.dismissPlayer() {
+          result(true)
+        }
+      }
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+}
