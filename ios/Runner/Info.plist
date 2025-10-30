@@ -35,8 +35,30 @@
 		<key>NSAllowsArbitraryLoadsForMedia</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>SmartIPTV Pro+ uses Bluetooth to help discover and connect to nearby Cast-enabled devices. We do not collect or store any Bluetooth data.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_CC1AD845._googlecast._tcp</string>
+		<string>_googlecast._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow SmartIPTV Pro+ to use the camera to capture artwork for channels and playlists.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SmartIPTV Pro+ uses the local network to discover Cast-enabled devices on your Wi‑Fi network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SmartIPTV Pro+ uses the microphone only for Google Cast guest mode (ultrasonic pairing) to discover and connect to nearby Cast devices. Audio is not recorded or stored.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow SmartIPTV Pro+ to save artwork to your photo library when you export or save images.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow SmartIPTV Pro+ to access your photo library to choose artwork for channels and playlists.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -53,27 +75,6 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>SmartIPTV Pro+ uses the local network to discover Cast-enabled devices on your Wi‑Fi network.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_CC1AD845._googlecast._tcp</string>
-		<string>_googlecast._tcp</string>
-	</array>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Allow SmartIPTV Pro+ to access your photo library to choose artwork for channels and playlists.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Allow SmartIPTV Pro+ to save artwork to your photo library when you export or save images.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>SmartIPTV Pro+ uses the microphone only for Google Cast guest mode (ultrasonic pairing) to discover and connect to nearby Cast devices. Audio is not recorded or stored.</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>SmartIPTV Pro+ uses Bluetooth to help discover and connect to nearby Cast-enabled devices. We do not collect or store any Bluetooth data.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Allow SmartIPTV Pro+ to use the camera to capture artwork for channels and playlists.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
 	</array>
 </dict>
 </plist>

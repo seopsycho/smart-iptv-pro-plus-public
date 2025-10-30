@@ -130,7 +130,8 @@ class _PlayerState extends State<Player> {
   void onExit() async {
     if (exiting) return;
     exiting = true;
-    if (widget.channel.mediaType == MediaType.movie && widget.channel.id != null) {
+    if (widget.channel.mediaType == MediaType.movie &&
+        widget.channel.id != null) {
       Sql.setPosition(widget.channel.id!, player.state.position.inSeconds);
     }
     if (key.currentState!.isFullscreen()) {
@@ -179,17 +180,16 @@ class _PlayerState extends State<Player> {
         await player.pause();
       }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(ok
-              ? 'Casting to device...'
-              : 'Failed to send to Cast device')));
+          content: Text(
+              ok ? 'Casting to device...' : 'Failed to send to Cast device')));
     } catch (e) {
       if (!mounted) return;
       String msg = 'Cast error: $e';
       if (e is PlatformException && e.code == 'no_session') {
-        msg = 'No Cast device connected. Tap the Cast button to connect, then try again.';
+        msg =
+            'No Cast device connected. Tap the Cast button to connect, then try again.';
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
@@ -216,7 +216,10 @@ class _PlayerState extends State<Player> {
               if (_sourceName != null)
                 Text(
                   'Playlist: ${_sourceName!}',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Colors.white70),
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelMedium
+                      ?.copyWith(color: Colors.white70),
                 ),
             ],
           ),
@@ -243,12 +246,6 @@ class _PlayerState extends State<Player> {
           ),
           SizedBox(width: 20),
           ChromecastButton(width: 44, height: 44, tintColor: Colors.white),
-          SizedBox(width: 12),
-          IconButton(
-            tooltip: 'Cast',
-            onPressed: castToDevice,
-            icon: const Icon(Icons.cast, color: Colors.white, size: 32),
-          ),
         ]);
   }
 }
