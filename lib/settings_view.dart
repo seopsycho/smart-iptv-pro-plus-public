@@ -216,7 +216,7 @@ class _SettingsState extends State<SettingsView> {
                         try {
                           await Utils.processSource(
                             source,
-                            true,
+                            false,
                             (label, done) {
                               if (done && steps.contains(label)) {
                                 completed.add(label);
@@ -629,7 +629,7 @@ class _SettingsState extends State<SettingsView> {
                                                   : ["Fetching Information"];
                                               completed.clear();
                                               setDialogState!(() {});
-                                              await Utils.processSource(s, true, (label, done) {
+                                              await Utils.processSource(s, false, (label, done) {
                                                 if (done && steps.contains(label)) {
                                                   completed.add(label);
                                                   setDialogState!(() {});

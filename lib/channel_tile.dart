@@ -9,7 +9,7 @@ import 'package:smart_iptv_pro/models/media_type.dart';
 import 'package:smart_iptv_pro/models/node.dart';
 import 'package:smart_iptv_pro/models/node_type.dart';
 // removed: player.dart (playback now initiated from DetailsPage)
-import 'package:smart_iptv_pro/backend/omdb.dart';
+import 'package:smart_iptv_pro/poster_resolver.dart';
 import 'package:smart_iptv_pro/details.dart';
 import 'package:smart_iptv_pro/player.dart';
 
@@ -29,8 +29,6 @@ class ChannelTile extends StatefulWidget {
 
 class _ChannelTileState extends State<ChannelTile> {
   final FocusNode _focusNode = FocusNode();
-  String? _omdbPoster;
-  bool _triedOmdb = false;
   @override
   void initState() {
     super.initState();
@@ -64,25 +62,7 @@ class _ChannelTileState extends State<ChannelTile> {
   }
 
   Future<void> _maybeFetchPoster() async {
-    if (_triedOmdb) return;
-    _triedOmdb = true;
-    if (widget.channel.mediaType == MediaType.movie ||
-        widget.channel.mediaType == MediaType.serie) {
-      final current = widget.channel.image?.trim();
-      if (current == null || current.isEmpty) {
-        final poster = await OmdbApi.getPosterByTitle(widget.channel.name);
-        if (poster != null) {
-          if (mounted) {
-            setState(() {
-              _omdbPoster = poster;
-            });
-          }
-          if (widget.channel.id != null) {
-            await Sql.updateChannelImage(widget.channel.id!, poster);
-          }
-        }
-      }
-    }
+    // No-op: PosterResolver handles image selection at render time
   }
 
   Future<void> play() async {
@@ -156,26 +136,24 @@ class _ChannelTileState extends State<ChannelTile> {
                                   child: Stack(
                                     children: [
                                       Positioned.fill(
-                                        child: ((widget.channel.image?.trim().isNotEmpty ?? false) || _omdbPoster != null)
-                                            ? CachedNetworkImage(
+                                        child: FutureBuilder<String?>(
+                                          future: PosterResolver.resolveBestPoster(widget.channel),
+                                          builder: (context, snap) {
+                                            final url = snap.data ?? widget.channel.image?.trim();
+                                            if (url != null && url.isNotEmpty) {
+                                              return CachedNetworkImage(
                                                 fit: BoxFit.cover,
                                                 cacheManager: ImageCacheManager.instance,
-                                                errorWidget: (_, __, ___) => Image.asset("assets/icon.png"),
-                                                imageUrl: (widget.channel.image?.trim().isNotEmpty ?? false)
-                                                    ? widget.channel.image!.trim()
-                                                    : _omdbPoster!,
-                                              )
-                                            : (_omdbPoster != null
-                                                ? CachedNetworkImage(
-                                                    fit: BoxFit.cover,
-                                                    cacheManager: ImageCacheManager.instance,
-                                                    errorWidget: (_, __, ___) => Image.asset("assets/icon.png"),
-                                                    imageUrl: _omdbPoster!,
-                                                  )
-                                                : Image.asset(
-                                                    "assets/icon.png",
-                                                    fit: BoxFit.cover,
-                                                  )),
+                                                errorWidget: (_, __, ___) => Image.asset("assets/icon.png", fit: BoxFit.cover),
+                                                imageUrl: url,
+                                              );
+                                            }
+                                            return Image.asset(
+                                              "assets/icon.png",
+                                              fit: BoxFit.cover,
+                                            );
+                                          },
+                                        ),
                                       ),
                                       if (widget.channel.favorite)
                                         const Positioned(

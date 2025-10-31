@@ -31,7 +31,16 @@ class _ChromecastButtonState extends State<ChromecastButton> {
         (defaultTargetPlatform == TargetPlatform.iOS && Platform.isIOS))) {
       return const SizedBox.shrink();
     }
-    
+    if (kDebugMode && defaultTargetPlatform == TargetPlatform.iOS && Platform.isIOS) {
+      return SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: Center(
+          child: Icon(Icons.cast, color: widget.tintColor ?? Theme.of(context).iconTheme.color),
+        ),
+      );
+    }
+
     final child = SizedBox(
       width: widget.width,
       height: widget.height,

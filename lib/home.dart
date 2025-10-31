@@ -29,6 +29,8 @@ import 'package:smart_iptv_pro/manage_categories.dart';
 import 'package:smart_iptv_pro/downloads_view.dart';
 import 'package:smart_iptv_pro/airplay_button.dart';
 import 'package:smart_iptv_pro/chromecast_button.dart';
+import 'package:smart_iptv_pro/poster_resolver.dart';
+import 'package:smart_iptv_pro/player.dart';
 
 class Home extends StatefulWidget {
   final HomeManager home;
@@ -278,15 +280,24 @@ class _HomeState extends State<Home> {
       await showWhatsNew(version);
     }
     if (widget.refresh) {
-      Error.tryAsyncNoLoading(() async {
+      await Error.tryAsyncNoLoading(() async {
         setState(() {
           blockSettings = true;
         });
         await Utils.refreshAllSources();
       }, context, true, "Refreshed all sources");
+      if (!mounted) return;
       setState(() {
         blockSettings = false;
       });
+      // Reload data and sections after refresh so Recently Added reflects changes
+      await load(false);
+      final idx = getStartingIndex();
+      if (idx == 0) {
+        await loadFeed();
+      } else if (idx == 3 || idx == 4) {
+        await loadLandingSections();
+      }
     }
   }
 
@@ -727,7 +738,9 @@ class _HomeState extends State<Home> {
       return _buildSection(
           title: title,
           height: 210,
-          children: recentLive.map((c) => _channelCard(c)).toList());
+          children: recentLive
+              .map((c) => _channelCard(c, playLiveOnTap: true))
+              .toList());
     }
     return Padding(
       padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
@@ -814,17 +827,29 @@ class _HomeState extends State<Home> {
     await load(false);
   }
 
-  Widget _channelCard(Channel c) {
+  Widget _channelCard(Channel c, {bool playLiveOnTap = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: InkWell(
         onTap: () async {
-          await Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => DetailsPage(
-                        channel: c,
-                      )));
+          if (playLiveOnTap && c.mediaType == MediaType.livestream) {
+            if (c.id != null) {
+              await Sql.addToHistory(c.id!);
+            }
+            await Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => Player(
+                          channel: c,
+                        )));
+          } else {
+            await Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => DetailsPage(
+                          channel: c,
+                        )));
+          }
           if (mounted) setState(() {});
         },
         child: SizedBox(
@@ -838,16 +863,27 @@ class _HomeState extends State<Home> {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: (c.image?.trim().isNotEmpty ?? false)
-                            ? CachedNetworkImage(
-                              imageUrl: c.image!.trim(),
-                              cacheManager: ImageCacheManager.instance,
+                        child: FutureBuilder<String?>(
+                          future: PosterResolver.resolveBestPoster(c),
+                          builder: (context, snap) {
+                            final url = snap.data ?? c.image?.trim();
+                            if (url != null && url.isNotEmpty) {
+                              return CachedNetworkImage(
+                                imageUrl: url,
+                                cacheManager: ImageCacheManager.instance,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Image.asset(
+                                  'assets/icon.png',
+                                  fit: BoxFit.cover,
+                                ),
+                              );
+                            }
+                            return Image.asset(
+                              'assets/icon.png',
                               fit: BoxFit.cover,
-                            )
-                            : Container(
-                                color: Theme.of(context).colorScheme.surfaceContainer,
-                                child: const Icon(Icons.tv, size: 48),
-                              ),
+                            );
+                          },
+                        ),
                       ),
                       if (c.favorite)
                         const Positioned(

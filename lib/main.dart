@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
@@ -12,19 +14,41 @@ import 'package:smart_iptv_pro/onboarding.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await dotenv.dotenv.load(fileName: ".env");
-  } catch (_) {}
-  final hasSources = await Sql.hasSources();
-  final settings = await SettingsService.getSettings();
-  final hasSeenOnboarding = await SettingsService.getHasSeenOnboarding();
-  try { await DownloadsService.init(); } catch (_) {}
-  runApp(MyApp(
-    skipSetup: hasSources,
-    settings: settings,
-    showOnboarding: !hasSeenOnboarding,
-  ));
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: \'${details.exceptionAsString()}\'');
+    if (details.stack != null) {
+      debugPrint(details.stack.toString());
+    }
+  };
+
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    if (kReleaseMode) {
+      return const SizedBox.shrink();
+    }
+    return ErrorWidget(details.exception);
+  };
+
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    try {
+      await dotenv.dotenv.load(fileName: ".env");
+    } catch (_) {}
+    final hasSources = await Sql.hasSources();
+    final settings = await SettingsService.getSettings();
+    final hasSeenOnboarding = await SettingsService.getHasSeenOnboarding();
+    try {
+      await DownloadsService.init();
+    } catch (_) {}
+    runApp(MyApp(
+      skipSetup: hasSources,
+      settings: settings,
+      showOnboarding: !hasSeenOnboarding,
+    ));
+  }, (Object error, StackTrace stack) {
+    debugPrint('Uncaught error: $error');
+    debugPrint(stack.toString());
+  });
 }
 
 class MyApp extends StatelessWidget {

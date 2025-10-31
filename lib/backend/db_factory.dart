@@ -158,6 +158,42 @@ class DbFactory {
         await tx.execute('''
           CREATE INDEX IF NOT EXISTS index_downloads_updated_at ON downloads(updated_at);
         ''');
+      }))
+      ..add(SqliteMigration(6, (tx) async {
+        await tx.execute('''
+          ALTER TABLE channels
+          ADD COLUMN created_at integer;
+        ''');
+        await tx.execute('''
+          ALTER TABLE channels
+          ADD COLUMN updated_at integer;
+        ''');
+        await tx.execute('''
+          UPDATE channels
+          SET created_at = strftime('%s','now')
+          WHERE created_at IS NULL;
+        ''');
+        await tx.execute('''
+          UPDATE channels
+          SET updated_at = created_at
+          WHERE updated_at IS NULL;
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_channel_created_at ON channels(created_at);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_channel_updated_at ON channels(updated_at);
+        ''');
+      }))
+      ..add(SqliteMigration(7, (tx) async {
+        final exists = await tx.getOptional(
+            "SELECT 1 FROM pragma_table_info('downloads') WHERE name = 'fail_reason' LIMIT 1");
+        if (exists == null) {
+          await tx.execute('''
+            ALTER TABLE downloads
+            ADD COLUMN fail_reason varchar(500);
+          ''');
+        }
       }));
     await migrations.migrate(db);
     // Improve concurrency: readers don't block writers and vice-versa

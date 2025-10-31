@@ -6,6 +6,7 @@ class DownloadItem {
   final int status;
   final int bytes;
   final int totalBytes;
+  final String? failReason;
 
   const DownloadItem({
     required this.channel,
@@ -13,6 +14,7 @@ class DownloadItem {
     required this.status,
     required this.bytes,
     required this.totalBytes,
+    this.failReason,
   });
 
   bool get completed => status == 1 || (totalBytes > 0 && bytes >= totalBytes);

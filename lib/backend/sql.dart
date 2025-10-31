@@ -29,13 +29,16 @@ class Sql {
         }
       });
     }
+
     bool retried = false;
     try {
       await _run();
     } catch (e) {
       // If the underlying sqlite isolate was closed (e.g. hot restart), reopen and retry once
       final msg = e.toString();
-      if (!retried && (msg.contains('ClosedException') || msg.contains('database is closed'))) {
+      if (!retried &&
+          (msg.contains('ClosedException') ||
+              msg.contains('database is closed'))) {
         retried = true;
         DbFactory.reset();
         await _run();
@@ -49,8 +52,8 @@ class Sql {
       insertChannel(Channel channel) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       await tx.execute('''
-        INSERT INTO channels (name, image, url, source_id, media_type, series_id, favorite, stream_id, group_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO channels (name, image, url, source_id, media_type, series_id, favorite, stream_id, group_name, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
         ON CONFLICT (name, source_id)
         DO UPDATE SET
           url = excluded.url,
@@ -58,7 +61,18 @@ class Sql {
           media_type = excluded.media_type,
           stream_id = excluded.stream_id,
           image = excluded.image,
-          series_id = excluded.series_id;
+          series_id = excluded.series_id,
+          updated_at = CASE 
+            WHEN (
+              COALESCE(url, '') <> COALESCE(excluded.url, '') OR
+              COALESCE(group_name, '') <> COALESCE(excluded.group_name, '') OR
+              media_type <> excluded.media_type OR
+              COALESCE(stream_id, -1) <> COALESCE(excluded.stream_id, -1) OR
+              COALESCE(image, '') <> COALESCE(excluded.image, '') OR
+              COALESCE(series_id, -1) <> COALESCE(excluded.series_id, -1)
+            ) THEN strftime('%s','now')
+            ELSE updated_at
+          END;
       ''', [
         channel.name,
         channel.image,
@@ -130,7 +144,7 @@ class Sql {
         AND media_type = ?
         AND series_id IS NULL
         AND source_id IN (${generatePlaceholders(sourceIds.length)})
-      ORDER BY id DESC
+      ORDER BY COALESCE(updated_at, created_at, id) DESC, id DESC
       LIMIT ?
     ''', [mediaType.index, ...sourceIds, limit]);
     return results.map(rowToChannel).toList();
@@ -319,7 +333,7 @@ class Sql {
     var query = filters.query ?? "";
     var keywords = filters.useKeywords
         ? query.split(" ").map((f) => "%$f%").toList()
-        : ["%$query%"]; 
+        : ["%$query%"];
     var mediaTypes = filters.mediaTypes!.map((x) => x.index);
     var sqlQuery = '''
         SELECT * FROM groups 
@@ -346,7 +360,7 @@ class Sql {
     var query = filters.query ?? "";
     var keywords = filters.useKeywords
         ? query.split(" ").map((f) => "%$f%").toList()
-        : ["%$query%"]; 
+        : ["%$query%"];
     var mediaTypes = filters.mediaTypes!.map((x) => x.index);
     var sqlQuery = '''
         SELECT * FROM groups 
@@ -655,11 +669,13 @@ class Sql {
         status = excluded.status,
         bytes = excluded.bytes,
         total_bytes = excluded.total_bytes,
+        fail_reason = NULL,
         updated_at = strftime('%s','now');
     ''', [channelId, filePath, status, bytes, totalBytes]);
   }
 
-  static Future<void> updateDownloadProgress(int channelId, int bytes, int totalBytes) async {
+  static Future<void> updateDownloadProgress(
+      int channelId, int bytes, int totalBytes) async {
     var db = await DbFactory.db;
     await db.execute('''
       UPDATE downloads
@@ -672,9 +688,21 @@ class Sql {
     var db = await DbFactory.db;
     await db.execute('''
       UPDATE downloads
-      SET status = ?, updated_at = strftime('%s','now')
+      SET status = ?,
+          fail_reason = CASE WHEN ? = 2 THEN fail_reason ELSE NULL END,
+          updated_at = strftime('%s','now')
       WHERE channel_id = ?
-    ''', [status, channelId]);
+    ''', [status, status, channelId]);
+  }
+
+  static Future<void> updateDownloadStatusReason(
+      int channelId, int status, String? reason) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      UPDATE downloads
+      SET status = ?, fail_reason = substr(?, 1, 500), updated_at = strftime('%s','now')
+      WHERE channel_id = ?
+    ''', [status, reason ?? '', channelId]);
   }
 
   static Future<void> deleteDownload(int channelId) async {
@@ -691,17 +719,17 @@ class Sql {
 
   static DownloadItem _rowToDownloadItem(Row row) {
     final channel = Channel(
-      id: row.columnAt(5),
-      name: row.columnAt(6),
-      group: row.columnAt(7),
-      image: row.columnAt(8),
-      url: row.columnAt(9),
-      mediaType: MediaType.values[row.columnAt(10)],
-      sourceId: row.columnAt(11),
-      favorite: row.columnAt(12) == 1,
-      seriesId: row.columnAt(13),
-      groupId: row.columnAt(14),
-      streamId: row.columnAt(15),
+      id: row.columnAt(6),
+      name: row.columnAt(7),
+      group: row.columnAt(8),
+      image: row.columnAt(9),
+      url: row.columnAt(10),
+      mediaType: MediaType.values[row.columnAt(11)],
+      sourceId: row.columnAt(12),
+      favorite: row.columnAt(13) == 1,
+      seriesId: row.columnAt(14),
+      groupId: row.columnAt(15),
+      streamId: row.columnAt(16),
     );
     return DownloadItem(
       channel: channel,
@@ -709,13 +737,14 @@ class Sql {
       status: row.columnAt(2),
       bytes: row.columnAt(3) ?? 0,
       totalBytes: row.columnAt(4) ?? 0,
+      failReason: row.columnAt(5),
     );
   }
 
   static Future<DownloadItem?> getDownload(int channelId) async {
     var db = await DbFactory.db;
     final row = await db.getOptional('''
-      SELECT d.channel_id, d.file_path, d.status, d.bytes, d.total_bytes,
+      SELECT d.channel_id, d.file_path, d.status, d.bytes, d.total_bytes, d.fail_reason,
              c.id, c.name, c.group_name, c.image, c.url, c.media_type, c.source_id, c.favorite, c.series_id, c.group_id, c.stream_id
       FROM downloads d JOIN channels c ON c.id = d.channel_id
       WHERE d.channel_id = ?
@@ -728,11 +757,34 @@ class Sql {
   static Future<List<DownloadItem>> getAllDownloads() async {
     var db = await DbFactory.db;
     final results = await db.getAll('''
-      SELECT d.channel_id, d.file_path, d.status, d.bytes, d.total_bytes,
+      SELECT d.channel_id, d.file_path, d.status, d.bytes, d.total_bytes, d.fail_reason,
              c.id, c.name, c.group_name, c.image, c.url, c.media_type, c.source_id, c.favorite, c.series_id, c.group_id, c.stream_id
       FROM downloads d JOIN channels c ON c.id = d.channel_id
       ORDER BY d.updated_at DESC
     ''');
     return results.map(_rowToDownloadItem).toList();
+  }
+
+  static Future<void> bumpSeriesUpdatedAtBySeriesId(
+      int sourceId, int seriesId) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      UPDATE channels
+      SET updated_at = COALESCE((
+        SELECT MAX(created_at)
+        FROM channels e
+        WHERE e.series_id = ?
+          AND e.source_id = ?
+      ), updated_at)
+      WHERE media_type = ?
+        AND url = ?
+        AND source_id = ?
+    ''', [
+      seriesId,
+      sourceId,
+      MediaType.serie.index,
+      seriesId.toString(),
+      sourceId,
+    ]);
   }
 }

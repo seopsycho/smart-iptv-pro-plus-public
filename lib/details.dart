@@ -20,6 +20,7 @@ import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:smart_iptv_pro/models/download_item.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
+import 'package:smart_iptv_pro/poster_resolver.dart';
 
 class DetailsPage extends StatefulWidget {
   final Channel channel;
@@ -498,7 +499,9 @@ class _DetailsPageState extends State<DetailsPage> {
                                     ? CachedNetworkImage(
                                         imageUrl: img!.trim(),
                                         cacheManager: ImageCacheManager.instance,
-                                        fit: BoxFit.cover)
+                                        fit: BoxFit.cover,
+                                        errorWidget: (_, __, ___) => Image.asset('assets/icon.png', fit: BoxFit.cover),
+                                      )
                                     : Container(color: Theme.of(context).colorScheme.surfaceContainer, child: const Icon(FeatherIcons.image)),
                               ),
                             ),
@@ -634,13 +637,20 @@ class _DetailsPageState extends State<DetailsPage> {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: CachedNetworkImage(
-                          imageUrl:
-                              (widget.channel.image?.trim().isNotEmpty ?? false)
-                                  ? widget.channel.image!.trim()
-                                  : (poster ?? ''),
-                          cacheManager: ImageCacheManager.instance,
-                          fit: BoxFit.cover,
+                        child: FutureBuilder<String?>(
+                          future: PosterResolver.resolveBestPoster(widget.channel),
+                          builder: (context, snap) {
+                            final url = snap.data ?? poster ?? widget.channel.image?.trim();
+                            if (url != null && url.isNotEmpty) {
+                              return CachedNetworkImage(
+                                imageUrl: url,
+                                cacheManager: ImageCacheManager.instance,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Image.asset('assets/icon.png', fit: BoxFit.cover),
+                              );
+                            }
+                            return Image.asset('assets/icon.png', fit: BoxFit.cover);
+                          },
                         ),
                       ),
                       Positioned(
@@ -847,7 +857,9 @@ class _DetailsPageState extends State<DetailsPage> {
                                   ? CachedNetworkImage(
                                       imageUrl: img!.trim(),
                                       cacheManager: ImageCacheManager.instance,
-                                      fit: BoxFit.cover)
+                                      fit: BoxFit.cover,
+                                      errorWidget: (_, __, ___) => Image.asset('assets/icon.png', fit: BoxFit.cover),
+                                    )
                                   : Container(
                                       color: Theme.of(context)
                                           .colorScheme
@@ -1010,7 +1022,7 @@ class _TmdbDetailsPageState extends State<TmdbDetailsPage> {
                     imageUrl: widget.item.posterUrl!,
                     cacheManager: ImageCacheManager.instance,
                     width: 300,
-                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => Image.asset('assets/icon.png'),
                   ),
                 ),
               const SizedBox(height: 12),

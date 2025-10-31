@@ -68,9 +68,13 @@ class DownloadsService {
               await Sql.updateDownloadStatus(channelId, 1);
               break;
             case bg.TaskStatus.failed:
+              await Sql.updateDownloadStatusReason(channelId, 2, 'Background download failed');
+              break;
             case bg.TaskStatus.canceled:
+              await Sql.updateDownloadStatusReason(channelId, 2, 'Canceled');
+              break;
             case bg.TaskStatus.notFound:
-              await Sql.updateDownloadStatus(channelId, 2);
+              await Sql.updateDownloadStatusReason(channelId, 2, 'Not found (404)');
               break;
             case bg.TaskStatus.waitingToRetry:
             case bg.TaskStatus.paused:
@@ -182,12 +186,24 @@ class DownloadsService {
     try {
       final result = await bg.FileDownloader().download(task);
       if (result.status != bg.TaskStatus.complete) {
-        try { await _runDownloadTask(channel); return; } catch (_) {}
-        await Sql.updateDownloadStatus(channel.id!, 2);
+        try { await _runDownloadTask(channel); return; } catch (e) {}
+        final reason = () {
+          switch (result.status) {
+            case bg.TaskStatus.canceled:
+              return 'Canceled';
+            case bg.TaskStatus.notFound:
+              return 'Not found (404)';
+            case bg.TaskStatus.failed:
+              return 'Background download failed';
+            default:
+              return 'Background download error';
+          }
+        }();
+        await Sql.updateDownloadStatusReason(channel.id!, 2, reason);
       }
-    } catch (_) {
+    } catch (e) {
       try { await _runDownloadTask(channel); return; } catch (_) {}
-      await Sql.updateDownloadStatus(channel.id!, 2);
+      await Sql.updateDownloadStatusReason(channel.id!, 2, 'Background exception');
     }
   }
 
@@ -197,6 +213,7 @@ class DownloadsService {
     const Duration inactivity = Duration(seconds: 30);
     int attempt = 0;
     final file = await _targetFileFor(channel);
+    String? lastReason;
     while (true) {
       attempt += 1;
       final client = http.Client();
@@ -229,6 +246,10 @@ class DownloadsService {
           await Sql.updateDownloadStatus(channel.id!, 1);
           return;
         }
+        if (!(resp.statusCode == 200 || (existing > 0 && resp.statusCode == 206))) {
+          lastReason = 'HTTP ${resp.statusCode}';
+          throw HttpException(lastReason!, uri: Uri.parse(channel.url!));
+        }
         final append = existing > 0 && resp.statusCode == 206;
         int received = append ? existing : 0;
         int total = 0;
@@ -251,6 +272,7 @@ class DownloadsService {
             try { await sub?.cancel(); } catch (_) {}
             try { await sink?.flush(); } catch (_) {}
             try { await sink?.close(); } catch (_) {}
+            lastReason = 'Timed out (inactivity)';
             if (!completer.isCompleted) completer.completeError(TimeoutException('inactivity'));
           });
         }
@@ -265,6 +287,13 @@ class DownloadsService {
             try { watchdog?.cancel(); } catch (_) {}
             try { await sink?.flush(); } catch (_) {}
             try { await sink?.close(); } catch (_) {}
+            if (e is TimeoutException) {
+              lastReason = lastReason ?? 'Timed out';
+            } else if (e is HttpException) {
+              lastReason = lastReason ?? e.message;
+            } else {
+              lastReason = lastReason ?? e.toString();
+            }
             if (!completer.isCompleted) completer.completeError(e);
           },
           onDone: () async {
@@ -288,8 +317,15 @@ class DownloadsService {
         await completer.future;
         return;
       } catch (e) {
+        if (e is TimeoutException) {
+          lastReason = lastReason ?? 'Timed out';
+        } else if (e is HttpException) {
+          lastReason = lastReason ?? e.message;
+        } else {
+          lastReason = lastReason ?? e.toString();
+        }
         if (attempt >= maxRetries) {
-          await Sql.updateDownloadStatus(channel.id!, 2);
+          await Sql.updateDownloadStatusReason(channel.id!, 2, lastReason);
           return;
         } else {
           final backoff = Duration(seconds: attempt * attempt);
@@ -333,7 +369,7 @@ class DownloadsService {
     if (cancel != null) {
       try { cancel(); } catch (_) {}
     }
-    await Sql.updateDownloadStatus(channelId, 2);
+    await Sql.updateDownloadStatusReason(channelId, 2, 'Canceled');
     // Continue with remaining queued items
     _pumpQueue();
   }

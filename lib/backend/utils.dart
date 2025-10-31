@@ -32,7 +32,7 @@ class Utils {
 
   static Future<void> refreshSource(Source source) async {
     refreshedSeries.clear();
-    await processSource(source, true, null);
+    await processSource(source, false, null);
   }
 
   static Future<void> processSource(Source source,
@@ -58,6 +58,19 @@ class Utils {
     var sources = await Sql.getSources();
     for (var source in sources) {
       await refreshSource(source);
+    }
+    await SettingsService.updateLastRefreshToNow();
+  }
+
+  static Future<void> resetSource(Source source) async {
+    refreshedSeries.clear();
+    await processSource(source, true, null);
+  }
+
+  static Future<void> resetAllSources() async {
+    var sources = await Sql.getSources();
+    for (var source in sources) {
+      await resetSource(source);
     }
     await SettingsService.updateLastRefreshToNow();
   }

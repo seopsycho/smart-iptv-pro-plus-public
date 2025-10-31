@@ -11,6 +11,15 @@ class AirPlayButton extends StatelessWidget {
     if (!(defaultTargetPlatform == TargetPlatform.iOS && Platform.isIOS)) {
       return const SizedBox.shrink();
     }
+    if (kDebugMode) {
+      return SizedBox(
+        width: 44,
+        height: 44,
+        child: const Center(
+          child: Icon(Icons.airplay),
+        ),
+      );
+    }
     return SizedBox(
       width: 44,
       height: 44,

@@ -220,6 +220,7 @@ Future<void> getEpisodes(Channel channel) async {
     } catch (_) {}
   }
   await Sql.commitWrite(statements);
+  await Sql.bumpSeriesUpdatedAtBySeriesId(source.id!, seriesId);
 }
 
 Channel episodeToChannel(XtreamEpisode episode, Source source, int seriesId) {

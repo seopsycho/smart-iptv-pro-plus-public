@@ -106,7 +106,9 @@ class _DownloadsViewState extends State<DownloadsView> {
         final sub = di.completed
             ? 'Completed'
             : isFailed
-                ? 'Failed'
+                ? (di.failReason != null && di.failReason!.trim().isNotEmpty
+                    ? 'Failed: ${di.failReason!.trim()}'
+                    : 'Failed')
                 : isQueued
                     ? 'Queued'
                     : (hasTotal
@@ -123,6 +125,7 @@ class _DownloadsViewState extends State<DownloadsView> {
                       imageUrl: image!.trim(),
                       cacheManager: ImageCacheManager.instance,
                       fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Image.asset('assets/icon.png', fit: BoxFit.cover),
                     )
                   : Container(
                       color: Theme.of(context).colorScheme.surfaceContainer,
