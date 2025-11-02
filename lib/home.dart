@@ -72,6 +72,9 @@ class _HomeState extends State<Home> {
   bool isLoading = false;
   bool blockSettings = false;
   int? previousScroll;
+  bool allowLive = true;
+  bool allowMovies = true;
+  bool allowSeries = true;
 
   @override
   void initState() {
@@ -202,6 +205,9 @@ class _HomeState extends State<Home> {
         await Sql.getRecentlyAddedByMediaType(sourceIds, MediaType.serie, 30);
     // TMDB trending (optional)
     final settings = await SettingsService.getSettings();
+    final showLive = settings.showLivestreams;
+    final showMov = settings.showMovies;
+    final showSer = settings.showSeries;
     List<TmdbItem> series = [];
     List<TmdbItem> movies = [];
     if (settings.tmdbApiKey.isNotEmpty) {
@@ -211,6 +217,9 @@ class _HomeState extends State<Home> {
     }
     if (!mounted) return;
     setState(() {
+      allowLive = showLive;
+      allowMovies = showMov;
+      allowSeries = showSer;
       recentLive = recent;
       favoriteTv = favTv;
       favMovies = favMov;
@@ -516,6 +525,8 @@ class _HomeState extends State<Home> {
                             ),
                           );
                           // After settings, re-sync enabled sources and reload
+                          final s = await SettingsService.getSettings();
+                          widget.home.filters.mediaTypes = s.getMediaTypes();
                           final enabled = await Sql.getEnabledSourcesMinimal();
                           widget.home.filters.sourceIds =
                               enabled.map((s) => s.id).toList();
@@ -610,46 +621,46 @@ class _HomeState extends State<Home> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildRecentTvSection(),
-                              if (favoriteTv.isNotEmpty)
+                              if (allowLive) _buildRecentTvSection(),
+                              if (allowLive && favoriteTv.isNotEmpty)
                                 _buildSection(
                                     title: 'Favorite TV Channels',
                                     height: 210,
                                     children: favoriteTv
                                         .map((c) => _channelCard(c))
                                         .toList()),
-                              if (topSeries.isNotEmpty)
+                              if (allowSeries && topSeries.isNotEmpty)
                                 _buildTmdbGateOrSection(
                                     title: 'Top Series',
                                     items: topSeries,
                                     isSeries: true),
-                              if (recentSeriesHome.isNotEmpty)
+                              if (allowSeries && recentSeriesHome.isNotEmpty)
                                 _buildSection(
                                     title: 'Recently added Series',
                                     height: 210,
                                     children: recentSeriesHome
                                         .map((c) => _channelCard(c))
                                         .toList()),
-                              if (favSeries.isNotEmpty)
+                              if (allowSeries && favSeries.isNotEmpty)
                                 _buildSection(
                                     title: 'Watchlist • Series',
                                     height: 210,
                                     children: favSeries
                                         .map((c) => _channelCard(c))
                                         .toList()),
-                              if (topMovies.isNotEmpty)
+                              if (allowMovies && topMovies.isNotEmpty)
                                 _buildTmdbGateOrSection(
                                     title: 'Top Movies',
                                     items: topMovies,
                                     isSeries: false),
-                              if (recentMoviesHome.isNotEmpty)
+                              if (allowMovies && recentMoviesHome.isNotEmpty)
                                 _buildSection(
                                     title: 'Recently added Movies',
                                     height: 210,
                                     children: recentMoviesHome
                                         .map((c) => _channelCard(c))
                                         .toList()),
-                              if (favMovies.isNotEmpty)
+                              if (allowMovies && favMovies.isNotEmpty)
                                 _buildSection(
                                     title: 'Watchlist • Movies',
                                     height: 210,

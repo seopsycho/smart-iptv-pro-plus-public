@@ -381,12 +381,123 @@ class _SettingsState extends State<SettingsView> {
                                       fontSize: 30,
                                       fontWeight: FontWeight.bold))),
                           const SizedBox(height: 10),
-                          ListTile(
-                              title: const Text("Default view"),
-                              subtitle:
-                                  Text(viewTypeToString(settings.defaultView)),
-                              onTap: () async =>
-                                  await _showDefaultViewDialog(context)),
+                          Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Padding(
+                                    padding: EdgeInsets.only(left: 10),
+                                    child: Text('Sources',
+                                        style: TextStyle(
+                                            fontSize: 30,
+                                            fontWeight: FontWeight.bold))),
+                                Row(children: [
+                                  IconButton(
+                                      onPressed: () async {
+                                        List<Source> srcs = await Sql.getSources();
+                                        String currentName = '';
+                                        List<String> steps = [];
+                                        final completed = <String>{};
+                                        bool allDone = false;
+                                        StateSetter? setDialogState;
+                                        final ready = Completer<void>();
+
+                                        final dialogFuture = showDialog(
+                                          context: context,
+                                          barrierDismissible: false,
+                                          builder: (context) {
+                                            return StatefulBuilder(
+                                              builder: (context, setState) {
+                                                setDialogState = setState;
+                                                if (!ready.isCompleted) ready.complete();
+                                                return AlertDialog(
+                                                  title: const Text("Loading Playlist"),
+                                                  content: SizedBox(
+                                                    width: 320,
+                                                    child: Column(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        if (currentName.isNotEmpty)
+                                                          Padding(
+                                                            padding: const EdgeInsets.only(bottom: 8),
+                                                            child: Text(currentName, style: Theme.of(context).textTheme.titleMedium),
+                                                          ),
+                                                        ...steps.map((s) => ListTile(
+                                                              dense: true,
+                                                              leading: completed.contains(s)
+                                                                  ? const Icon(Icons.check_circle, color: Colors.green)
+                                                                  : const SizedBox(
+                                                                      width: 24,
+                                                                      height: 24,
+                                                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                                                    ),
+                                                              title: Text(s),
+                                                            ))
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: allDone ? () => Navigator.pop(context) : null,
+                                                      child: const Text("Done"),
+                                                    ),
+                                                  ],
+                                                );
+                                              },
+                                            );
+                                          },
+                                        );
+
+                                        await ready.future;
+                                        final result = await Error.tryAsyncNoLoading(() async {
+                                          try {
+                                            for (final s in srcs) {
+                                              currentName = s.name;
+                                              steps = s.sourceType == SourceType.xtream
+                                                  ? [
+                                                      "Checking server status",
+                                                      "Fetching live streaming categories",
+                                                      "Fetching live streaming Channels",
+                                                      "Fetching live movie categories",
+                                                      "Fetching live films",
+                                                      "Fetching live series categories",
+                                                      "Fetching live series",
+                                                      "Fetching Information",
+                                                    ]
+                                                  : ["Fetching Information"];
+                                              completed.clear();
+                                              setDialogState!(() {});
+                                              await Utils.processSource(s, false, (label, done) {
+                                                if (done && steps.contains(label)) {
+                                                  completed.add(label);
+                                                  setDialogState!(() {});
+                                                }
+                                              });
+                                            }
+                                          } finally {
+                                            allDone = true;
+                                            setDialogState!(() {});
+                                          }
+                                        }, context, true, "Successfully refreshed all sources");
+
+                                        await dialogFuture;
+                                        if (mounted && result.success) {
+                                          await reloadSources();
+                                        }
+                                      },
+                                      icon: const Icon(Icons.refresh)),
+                                  IconButton(
+                                      onPressed: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (context) => const Setup(
+                                                    showAppBar: true,
+                                                  ))),
+                                      icon: const Icon(Icons.add))
+                                ])
+                              ]),
+                          const SizedBox(height: 10),
+                          ...sources.map(getSource),
+                          const SizedBox(height: 10),
                           ListTile(
                             title: const Text('Metadata provider'),
                             subtitle: Text(settings.metadataProvider == 'tmdb'
@@ -595,130 +706,7 @@ class _SettingsState extends State<SettingsView> {
                             trailing: const Icon(Icons.chevron_right),
                             onTap: _showThirdPartyNotices,
                           ),
-                          const Divider(),
-                          Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Padding(
-                                    padding: EdgeInsets.only(left: 10),
-                                    child: Text('Sources',
-                                        style: TextStyle(
-                                            fontSize: 30,
-                                            fontWeight: FontWeight.bold))),
-                                Row(children: [
-                                  IconButton(
-                                      onPressed: () async {
-                                        List<Source> srcs = await Sql.getSources();
-                                        String currentName = '';
-                                        List<String> steps = [];
-                                        final completed = <String>{};
-                                        bool allDone = false;
-                                        StateSetter? setDialogState;
-                                        final ready = Completer<void>();
-
-                                        final dialogFuture = showDialog(
-                                          context: context,
-                                          barrierDismissible: false,
-                                          builder: (context) {
-                                            return StatefulBuilder(
-                                              builder: (context, setState) {
-                                                setDialogState = setState;
-                                                if (!ready.isCompleted) ready.complete();
-                                                return AlertDialog(
-                                                  title: const Text("Loading Playlist"),
-                                                  content: SizedBox(
-                                                    width: 320,
-                                                    child: Column(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        if (currentName.isNotEmpty)
-                                                          Padding(
-                                                            padding: const EdgeInsets.only(bottom: 8),
-                                                            child: Text(currentName, style: Theme.of(context).textTheme.titleMedium),
-                                                          ),
-                                                        ...steps.map((s) => ListTile(
-                                                              dense: true,
-                                                              leading: completed.contains(s)
-                                                                  ? const Icon(Icons.check_circle, color: Colors.green)
-                                                                  : const SizedBox(
-                                                                      width: 24,
-                                                                      height: 24,
-                                                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                                                    ),
-                                                              title: Text(s),
-                                                            ))
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  actions: [
-                                                    TextButton(
-                                                      onPressed: allDone ? () => Navigator.pop(context) : null,
-                                                      child: const Text("Done"),
-                                                    ),
-                                                  ],
-                                                );
-                                              },
-                                            );
-                                          },
-                                        );
-
-                                        await ready.future;
-                                        final result = await Error.tryAsyncNoLoading(() async {
-                                          try {
-                                            for (final s in srcs) {
-                                              currentName = s.name;
-                                              steps = s.sourceType == SourceType.xtream
-                                                  ? [
-                                                      "Checking server status",
-                                                      "Fetching live streaming categories",
-                                                      "Fetching live streaming Channels",
-                                                      "Fetching live movie categories",
-                                                      "Fetching live films",
-                                                      "Fetching live series categories",
-                                                      "Fetching live series",
-                                                      "Fetching Information",
-                                                    ]
-                                                  : ["Fetching Information"];
-                                              completed.clear();
-                                              setDialogState!(() {});
-                                              await Utils.processSource(s, false, (label, done) {
-                                                if (done && steps.contains(label)) {
-                                                  completed.add(label);
-                                                  setDialogState!(() {});
-                                                }
-                                              });
-                                            }
-                                            allDone = true;
-                                            setDialogState!(() {});
-                                          } finally {
-                                            allDone = true;
-                                            if (steps.isNotEmpty) {
-                                              for (final s in steps) {
-                                                if (!completed.contains(s)) completed.add(s);
-                                              }
-                                            }
-                                            setDialogState!(() {});
-                                          }
-                                        }, context, true, "Successfully refreshed all sources");
-
-                                        await dialogFuture;
-                                        if (mounted && result.success) {
-                                          await reloadSources();
-                                        }
-                                      },
-                                      icon: const Icon(Icons.refresh)),
-                                  IconButton(
-                                      onPressed: () => Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                              builder: (context) => const Setup(
-                                                    showAppBar: true,
-                                                  ))),
-                                      icon: const Icon(Icons.add))
-                                ])
-                              ]),
-                          const SizedBox(height: 10),
-                          ...sources.map(getSource)
+                          // End of About section; keep as last
                         ],
                       ))))),
     );
