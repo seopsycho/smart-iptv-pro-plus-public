@@ -20,7 +20,6 @@ import 'package:smart_iptv_pro/setup.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:smart_iptv_pro/downloads_view.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -34,12 +33,7 @@ class _SettingsState extends State<SettingsView> {
   List<Source> sources = [];
   bool loading = true;
   String _sourceCodeUrl() {
-    try {
-      final v = dotenv.dotenv.env['SOURCE_CODE_URL'];
-      return (v != null && v.isNotEmpty) ? v : 'https://example.com/source';
-    } catch (_) {
-      return 'https://example.com/source';
-    }
+    return 'https://github.com/seopsycho/smart-iptv-pro-plus-public';
   }
 
   @override
@@ -102,27 +96,6 @@ class _SettingsState extends State<SettingsView> {
         context: context,
         builder: (builder) =>
             EditDialog(source: source, afterSave: reloadSources));
-  }
-
-  Future<void> _showDefaultViewDialog(BuildContext context) async {
-    showDialog(
-        barrierDismissible: true,
-        context: context,
-        builder: (BuildContext context) {
-          return SelectDialog(
-              title: "Default view",
-              data: ViewType.values
-                  .take(4)
-                  .map((x) => IdData(id: x.index, data: x.name))
-                  .toList(),
-              action: (view) {
-                setState(() {
-                  settings.defaultView = ViewType.values[view];
-                  updateSettings();
-                });
-                Navigator.of(context).pop();
-              });
-        });
   }
 
   Future<void> toggleSource(Source source) async {
@@ -321,6 +294,66 @@ class _SettingsState extends State<SettingsView> {
             ));
   }
 
+  Future<void> _openExternal(String url) async {
+    final uri = Uri.parse(url);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _showThirdPartyNotices() async {
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Third-party notices'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                title: const Text('google-cast-sdk (Google)'),
+                trailing: const Icon(Icons.launch),
+                onTap: () => _openExternal('https://developers.google.com/terms'),
+              ),
+              ListTile(
+                title: const Text('DKImagePickerController (MIT)'),
+                trailing: const Icon(Icons.launch),
+                onTap: () => _openExternal('https://github.com/zhangao0086/DKImagePickerController/blob/master/LICENSE'),
+              ),
+              ListTile(
+                title: const Text('DKPhotoGallery (MIT)'),
+                trailing: const Icon(Icons.launch),
+                onTap: () => _openExternal('https://github.com/zhangao0086/DKPhotoGallery/blob/master/LICENSE'),
+              ),
+              ListTile(
+                title: const Text('SDWebImage (MIT)'),
+                trailing: const Icon(Icons.launch),
+                onTap: () => _openExternal('https://github.com/SDWebImage/SDWebImage/blob/master/LICENSE'),
+              ),
+              ListTile(
+                title: const Text('SwiftyGif (MIT)'),
+                trailing: const Icon(Icons.launch),
+                onTap: () => _openExternal('https://github.com/kirualex/SwiftyGif/blob/master/LICENSE'),
+              ),
+              ListTile(
+                title: const Text('Protobuf (BSD-3-Clause)'),
+                trailing: const Icon(Icons.launch),
+                onTap: () => _openExternal('https://github.com/protocolbuffers/protobuf/blob/main/LICENSE'),
+              ),
+              ListTile(
+                title: const Text('SQLite (Public Domain)'),
+                trailing: const Icon(Icons.launch),
+                onTap: () => _openExternal('https://www.sqlite.org/copyright.html'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -511,13 +544,9 @@ class _SettingsState extends State<SettingsView> {
                                       fontWeight: FontWeight.bold))),
                           ListTile(
                             title: const Text('Source code'),
-                            subtitle: Text(_sourceCodeUrl()),
+                            subtitle: const Text('View'),
                             trailing: const Icon(Icons.launch),
-                            onTap: () async {
-                              final uri = Uri.parse(_sourceCodeUrl());
-                              await launchUrl(uri,
-                                  mode: LaunchMode.externalApplication);
-                            },
+                            onTap: () => _openExternal(_sourceCodeUrl()),
                           ),
                           ListTile(
                             title: const Text('Legal disclaimer'),
@@ -542,6 +571,29 @@ class _SettingsState extends State<SettingsView> {
                               context: context,
                               applicationName: 'SmartIPTV Pro+',
                             ),
+                          ),
+                          ListTile(
+                            title: const Text('Privacy Policy'),
+                            subtitle: const Text('View'),
+                            trailing: const Icon(Icons.launch),
+                            onTap: () => _openExternal('https://iptv-front.vercel.app/'),
+                          ),
+                          ListTile(
+                            title: const Text('Support'),
+                            subtitle: const Text('Open Support Page'),
+                            trailing: const Icon(Icons.launch),
+                            onTap: () => _openExternal('https://iptv-front.vercel.app/support/'),
+                          ),
+                          ListTile(
+                            title: const Text('App License (AGPL-3.0)'),
+                            subtitle: const Text('Read license'),
+                            trailing: const Icon(Icons.launch),
+                            onTap: () => _openExternal('https://www.gnu.org/licenses/agpl-3.0.html'),
+                          ),
+                          ListTile(
+                            title: const Text('Third-party notices'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: _showThirdPartyNotices,
                           ),
                           const Divider(),
                           Row(
