@@ -21,7 +21,9 @@ class ChromecastButtonPlatformView(context: Context) : PlatformView {
     private val button: MediaRouteButton = MediaRouteButton(context)
 
     init {
-        CastButtonFactory.setUpMediaRouteButton(context, button)
+        try {
+            CastButtonFactory.setUpMediaRouteButton(context, button)
+        } catch (_: Throwable) {}
         container.addView(button, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     }
 
@@ -29,3 +31,4 @@ class ChromecastButtonPlatformView(context: Context) : PlatformView {
 
     override fun dispose() {}
 }
+

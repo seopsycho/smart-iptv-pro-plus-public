@@ -158,7 +158,9 @@ Channel xtreamToChannel(XtreamStream stream, Source source,
           ? stream.seriesId.toString()
           : getUrl(stream.streamId?.trim(), source, streamType,
               stream.containerExtension),
-      streamId: int.tryParse(stream.streamId ?? "") ?? -1);
+      streamId: int.tryParse(stream.streamId ?? "") ?? -1,
+      createdAt: stream.added,
+      updatedAt: stream.lastModified ?? stream.added);
 }
 
 String getUrl(

@@ -24,8 +24,12 @@ class ChromecastChannel private constructor(private val context: Context, messen
     }
 
     private fun client(): RemoteMediaClient? {
-        val session = CastContext.getSharedInstance(context).sessionManager.currentCastSession
-        return session?.remoteMediaClient
+        return try {
+            val session = CastContext.getSharedInstance(context).sessionManager.currentCastSession
+            session?.remoteMediaClient
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {

@@ -53,7 +53,7 @@ class Sql {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       await tx.execute('''
         INSERT INTO channels (name, image, url, source_id, media_type, series_id, favorite, stream_id, group_name, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, strftime('%s','now')), ?)
         ON CONFLICT (name, source_id)
         DO UPDATE SET
           url = excluded.url,
@@ -70,7 +70,8 @@ class Sql {
               COALESCE(stream_id, -1) <> COALESCE(excluded.stream_id, -1) OR
               COALESCE(image, '') <> COALESCE(excluded.image, '') OR
               COALESCE(series_id, -1) <> COALESCE(excluded.series_id, -1)
-            ) THEN strftime('%s','now')
+            ) THEN COALESCE(excluded.updated_at, strftime('%s','now'))
+            WHEN (excluded.updated_at IS NOT NULL AND (updated_at IS NULL OR excluded.updated_at > updated_at)) THEN excluded.updated_at
             ELSE updated_at
           END;
       ''', [
@@ -84,7 +85,9 @@ class Sql {
         channel.seriesId,
         channel.favorite,
         channel.streamId,
-        channel.group
+        channel.group,
+        channel.createdAt,
+        channel.updatedAt
       ]);
       memory['lastChannelId'] =
           (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
@@ -104,6 +107,76 @@ class Sql {
       LIMIT ?
     ''', [MediaType.livestream.index, ...sourceIds, limit]);
     return results.map(rowToChannel).toList();
+  }
+
+  static Future<Map<String, bool>> getHomeFlagsSingle(int channelId) async {
+    var db = await DbFactory.db;
+    final row = await db.getOptional('''
+      SELECT hide_recent, hide_all, pinned
+      FROM home_flags
+      WHERE channel_id = ?
+      LIMIT 1
+    ''', [channelId]);
+    if (row == null) {
+      return {"hide_recent": false, "hide_all": false, "pinned": false};
+    }
+    return {
+      "hide_recent": (row.columnAt(0) ?? 0) == 1,
+      "hide_all": (row.columnAt(1) ?? 0) == 1,
+      "pinned": (row.columnAt(2) ?? 0) == 1,
+    };
+  }
+
+  static Future<void> setHideRecent(int channelId, bool hidden) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      INSERT INTO home_flags (channel_id, hide_recent, hide_all, pinned)
+      VALUES (?, ?, 0, 0)
+      ON CONFLICT(channel_id) DO UPDATE SET
+        hide_recent = excluded.hide_recent
+    ''', [channelId, hidden ? 1 : 0]);
+  }
+
+  static Future<void> setHideAll(int channelId, bool hidden) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      INSERT INTO home_flags (channel_id, hide_recent, hide_all, pinned)
+      VALUES (?, 0, ?, 0)
+      ON CONFLICT(channel_id) DO UPDATE SET
+        hide_all = excluded.hide_all
+    ''', [channelId, hidden ? 1 : 0]);
+  }
+
+  static Future<void> setPinned(int channelId, bool pinned) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      INSERT INTO home_flags (channel_id, hide_recent, hide_all, pinned)
+      VALUES (?, 0, 0, ?)
+      ON CONFLICT(channel_id) DO UPDATE SET
+        pinned = excluded.pinned
+    ''', [channelId, pinned ? 1 : 0]);
+  }
+
+  static Future<Map<int, Map<String, int>>> getHomeFlagsForIds(
+      List<int> channelIds) async {
+    if (channelIds.isEmpty) return {};
+    var db = await DbFactory.db;
+    final placeholders = generatePlaceholders(channelIds.length);
+    final rows = await db.getAll('''
+      SELECT channel_id, hide_recent, hide_all, pinned
+      FROM home_flags
+      WHERE channel_id IN ($placeholders)
+    ''', channelIds);
+    final map = <int, Map<String, int>>{};
+    for (final r in rows) {
+      final id = r.columnAt(0) as int;
+      map[id] = {
+        "hide_recent": (r.columnAt(1) ?? 0) as int,
+        "hide_all": (r.columnAt(2) ?? 0) as int,
+        "pinned": (r.columnAt(3) ?? 0) as int,
+      };
+    }
+    return map;
   }
 
   static Future<List<Channel>> getFavoritesForSources(
@@ -316,6 +389,8 @@ class Sql {
       seriesId: row.columnAt(8),
       groupId: row.columnAt(9),
       streamId: row.columnAt(10),
+      createdAt: row.columnAt(12),
+      updatedAt: row.columnAt(13),
     );
   }
 

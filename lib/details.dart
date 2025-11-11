@@ -24,7 +24,8 @@ import 'package:smart_iptv_pro/poster_resolver.dart';
 
 class DetailsPage extends StatefulWidget {
   final Channel channel;
-  const DetailsPage({super.key, required this.channel});
+  final VoidCallback? onFavoriteToggled;
+  const DetailsPage({super.key, required this.channel, this.onFavoriteToggled});
 
   @override
   State<DetailsPage> createState() => _DetailsPageState();
@@ -420,6 +421,7 @@ class _DetailsPageState extends State<DetailsPage> {
     await Sql.favoriteChannel(widget.channel.id!, !_favorite);
     if (mounted) setState(() => _favorite = !_favorite);
     widget.channel.favorite = _favorite;
+    widget.onFavoriteToggled?.call();
   }
 
   Future<void> _play(Channel channel) async {
@@ -616,6 +618,12 @@ class _DetailsPageState extends State<DetailsPage> {
         : ((_omdbDetails?.plot != null && _omdbDetails!.plot.trim().isNotEmpty)
             ? _omdbDetails!.plot
             : (_tmdbDetails?.overview ?? ''));
+    final int? sortEpoch = widget.channel.updatedAt ?? widget.channel.createdAt;
+    final DateTime? sortDate =
+        sortEpoch != null ? DateTime.fromMillisecondsSinceEpoch(sortEpoch * 1000) : null;
+    final bool isUpdated = widget.channel.updatedAt != null &&
+        widget.channel.updatedAt != widget.channel.createdAt;
+    final String sortLabel = isUpdated ? 'Updated' : 'Added';
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
@@ -750,7 +758,9 @@ class _DetailsPageState extends State<DetailsPage> {
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
                 children: [
                   if (rating != null)
                     Row(children: [
@@ -759,14 +769,15 @@ class _DetailsPageState extends State<DetailsPage> {
                       const SizedBox(width: 6),
                       Text(rating.toStringAsFixed(1)),
                     ]),
-                  if (year != null) ...[
-                    const SizedBox(width: 16),
-                    Text(year.toString()),
-                  ],
-                  if (duration != null) ...[
-                    const SizedBox(width: 16),
-                    Text('${duration}m'),
-                  ]
+                  if (year != null) Text(year.toString()),
+                  if (duration != null) Text('${duration}m'),
+                  if (sortDate != null)
+                    Text(
+                      '$sortLabel: '
+                      '${sortDate.year.toString().padLeft(4, '0')}-'
+                      '${sortDate.month.toString().padLeft(2, '0')}-'
+                      '${sortDate.day.toString().padLeft(2, '0')}',
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1028,13 +1039,14 @@ class _TmdbDetailsPageState extends State<TmdbDetailsPage> {
               const SizedBox(height: 12),
               Text(widget.item.overview),
               const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
                 children: [
                   ElevatedButton.icon(
                       onPressed: _findAndOpenStreams,
                       icon: const Icon(Icons.play_arrow),
                       label: const Text('Find Streams')),
-                  const SizedBox(width: 12),
                   if (trailerKey != null)
                     OutlinedButton.icon(
                         onPressed: () async {

@@ -19,15 +19,17 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>$(FLUTTER_BUILD_NAME)</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIRequiresFullScreen</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -46,6 +48,8 @@
 	<string>SmartIPTV Pro+ uses the local network to discover Cast-enabled devices on your Wi‑Fi network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SmartIPTV Pro+ uses the microphone only for Google Cast guest mode (ultrasonic pairing) to discover and connect to nearby Cast devices. Audio is not recorded or stored.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SmartIPTV Pro+ only accesses your Photo Library if you choose to import media from Photos. Access is used solely to let you pick items; your photos are never uploaded or stored.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

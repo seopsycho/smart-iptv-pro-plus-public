@@ -1,6 +1,6 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
 import 'package:smart_iptv_pro/backend/utils.dart';
@@ -31,6 +31,7 @@ import 'package:smart_iptv_pro/airplay_button.dart';
 import 'package:smart_iptv_pro/chromecast_button.dart';
 import 'package:smart_iptv_pro/poster_resolver.dart';
 import 'package:smart_iptv_pro/player.dart';
+import 'package:smart_iptv_pro/adaptive/adaptive_grid.dart';
 
 class Home extends StatefulWidget {
   final HomeManager home;
@@ -75,12 +76,56 @@ class _HomeState extends State<Home> {
   bool allowLive = true;
   bool allowMovies = true;
   bool allowSeries = true;
+  bool showHiddenInHome = false;
+
+  // Simplified poster URL method that uses channel's own image
+  Future<String?> _getPosterUrl(Channel c) async {
+    if (kDebugMode) {
+      debugPrint('_getPosterUrl: "${c.name}" - raw image: "${c.image}"');
+    }
+    
+    // Use the channel's own image - this should be the primary source
+    if (c.image != null && c.image!.trim().isNotEmpty) {
+      final trimmed = c.image!.trim();
+      if (kDebugMode) {
+        debugPrint('_getPosterUrl: "${c.name}" - returning URL: "$trimmed"');
+      }
+      return trimmed;
+    }
+    
+    // If no channel image, return null to use default asset
+    if (kDebugMode) {
+      debugPrint('_getPosterUrl: "${c.name}" - no image found, returning null');
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_scrollListener);
     initializeAsync();
+  }
+
+  Widget _buildHomeFlagsFilter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Wrap(
+        spacing: 8,
+        children: [
+          FilterChip(
+            label: const Text('Show hidden'),
+            selected: showHiddenInHome,
+            onSelected: (v) async {
+              setState(() {
+                showHiddenInHome = v;
+              });
+              await loadFeed();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _refreshCategoriesAfterChange() async {
@@ -215,17 +260,100 @@ class _HomeState extends State<Home> {
       series = await tmdb.trendingSeries();
       movies = await tmdb.trendingMovies();
     }
+    final ids = <int>{
+      ...recent.where((c) => c.id != null).map((c) => c.id!),
+      ...favTv.where((c) => c.id != null).map((c) => c.id!),
+      ...favMov.where((c) => c.id != null).map((c) => c.id!),
+      ...favSer.where((c) => c.id != null).map((c) => c.id!),
+      ...rMovies.where((c) => c.id != null).map((c) => c.id!),
+      ...rSeries.where((c) => c.id != null).map((c) => c.id!),
+    };
+    final flags = await Sql.getHomeFlagsForIds(ids.toList());
+
+    List<Channel> apply(List<Channel> list, {required bool isRecentSection}) {
+      if (kDebugMode) {
+        debugPrint('apply: Processing ${list.length} items, isRecentSection: $isRecentSection');
+      }
+      final filtered = list.where((c) {
+        final f = flags[c.id ?? -1];
+        if (f == null) {
+          if (kDebugMode) {
+            debugPrint('apply: "${c.name}" has no flags, showing');
+          }
+          return true;
+        }
+        if (showHiddenInHome) {
+          if (kDebugMode) {
+            debugPrint('apply: "${c.name}" showHiddenInHome is true, showing');
+          }
+          return true;
+        }
+        final hideAll = (f["hide_all"] ?? 0) == 1;
+        final hideRecent = (f["hide_recent"] ?? 0) == 1;
+        final pinned = (f["pinned"] ?? 0) == 1;
+        
+        if (hideAll) {
+          if (kDebugMode) {
+            debugPrint('apply: "${c.name}" hide_all is true, hiding');
+          }
+          return false;
+        }
+        if (isRecentSection && hideRecent) {
+          if (kDebugMode) {
+            debugPrint('apply: "${c.name}" hide_recent is true in recent section, hiding');
+          }
+          return false;
+        }
+        
+        // Log image info for debugging
+        if (kDebugMode) {
+          if (pinned) {
+            debugPrint('apply: "${c.name}" is PINNED, image: "${c.image}"');
+          } else {
+            debugPrint('apply: "${c.name}" is UNPINNED, image: "${c.image}"');
+          }
+        }
+        
+        if (kDebugMode) {
+          debugPrint('apply: "${c.name}" passed all filters, showing');
+        }
+        return true;
+      }).toList();
+      if (kDebugMode) {
+        debugPrint('apply: After filtering, ${filtered.length} items remain');
+      }
+      filtered.sort((a, b) {
+        final fa = flags[a.id ?? -1];
+        final fb = flags[b.id ?? -1];
+        final pa = (fa?['pinned'] ?? 0) == 1 ? 1 : 0;
+        final pb = (fb?['pinned'] ?? 0) == 1 ? 1 : 0;
+        final result = pb.compareTo(pa);
+        if (kDebugMode) {
+          if (pa == 1 && pb == 0) {
+            debugPrint('sort: "${a.name}" is pinned, comes before "${b.name}"');
+          } else if (pa == 0 && pb == 1) {
+            debugPrint('sort: "${b.name}" is pinned, comes before "${a.name}"');
+          }
+        }
+        return result;
+      });
+      if (kDebugMode) {
+        debugPrint('apply: Final list has ${filtered.length} items');
+      }
+      return filtered;
+    }
+
     if (!mounted) return;
     setState(() {
       allowLive = showLive;
       allowMovies = showMov;
       allowSeries = showSer;
-      recentLive = recent;
-      favoriteTv = favTv;
-      favMovies = favMov;
-      favSeries = favSer;
-      recentMoviesHome = rMovies;
-      recentSeriesHome = rSeries;
+      recentLive = apply(recent, isRecentSection: true);
+      favoriteTv = apply(favTv, isRecentSection: false);
+      favMovies = apply(favMov, isRecentSection: false);
+      favSeries = apply(favSer, isRecentSection: false);
+      recentMoviesHome = apply(rMovies, isRecentSection: false);
+      recentSeriesHome = apply(rSeries, isRecentSection: false);
       topSeries = series;
       topMovies = movies;
     });
@@ -621,13 +749,14 @@ class _HomeState extends State<Home> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              _buildHomeFlagsFilter(),
                               if (allowLive) _buildRecentTvSection(),
                               if (allowLive && favoriteTv.isNotEmpty)
                                 _buildSection(
                                     title: 'Favorite TV Channels',
                                     height: 210,
                                     children: favoriteTv
-                                        .map((c) => _channelCard(c))
+                                        .map((c) => _channelCard(c, enableOptions: true))
                                         .toList()),
                               if (allowSeries && topSeries.isNotEmpty)
                                 _buildTmdbGateOrSection(
@@ -639,14 +768,14 @@ class _HomeState extends State<Home> {
                                     title: 'Recently added Series',
                                     height: 210,
                                     children: recentSeriesHome
-                                        .map((c) => _channelCard(c))
+                                        .map((c) => _channelCard(c, enableOptions: true))
                                         .toList()),
                               if (allowSeries && favSeries.isNotEmpty)
                                 _buildSection(
                                     title: 'Watchlist • Series',
                                     height: 210,
                                     children: favSeries
-                                        .map((c) => _channelCard(c))
+                                        .map((c) => _channelCard(c, enableOptions: true))
                                         .toList()),
                               if (allowMovies && topMovies.isNotEmpty)
                                 _buildTmdbGateOrSection(
@@ -658,14 +787,14 @@ class _HomeState extends State<Home> {
                                     title: 'Recently added Movies',
                                     height: 210,
                                     children: recentMoviesHome
-                                        .map((c) => _channelCard(c))
+                                        .map((c) => _channelCard(c, enableOptions: true))
                                         .toList()),
                               if (allowMovies && favMovies.isNotEmpty)
                                 _buildSection(
                                     title: 'Watchlist • Movies',
                                     height: 210,
                                     children: favMovies
-                                        .map((c) => _channelCard(c))
+                                        .map((c) => _channelCard(c, enableOptions: true))
                                         .toList()),
                           ],
                           ),
@@ -681,13 +810,7 @@ class _HomeState extends State<Home> {
                           controller: _scrollController,
                           padding: const EdgeInsets.fromLTRB(16, 15, 16, 5),
                           itemCount: channels.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 315,
-                            mainAxisExtent: 120,
-                            mainAxisSpacing: 16,
-                            crossAxisSpacing: 16,
-                          ),
+                          gridDelegate: channelsGridDelegate(context),
                           itemBuilder: (context, index) {
                             final channel = channels[index];
                             if (channel.mediaType == MediaType.group) {
@@ -697,6 +820,8 @@ class _HomeState extends State<Home> {
                               channel: channel,
                               parentContext: context,
                               setNode: setNode,
+                              onFavoriteToggled: _onFavoriteToggled,
+                              onShowDetails: null,
                             );
                           },
                         )),
@@ -750,7 +875,7 @@ class _HomeState extends State<Home> {
           title: title,
           height: 210,
           children: recentLive
-              .map((c) => _channelCard(c, playLiveOnTap: true))
+              .map((c) => _channelCard(c, playLiveOnTap: true, fromRecents: true, enableOptions: true))
               .toList());
     }
     return Padding(
@@ -838,7 +963,84 @@ class _HomeState extends State<Home> {
     await load(false);
   }
 
-  Widget _channelCard(Channel c, {bool playLiveOnTap = false}) {
+  Future<void> _onFavoriteToggled() async {
+    // Refresh current grid/list
+    await load(false);
+    // Also refresh sections if on tabs that show them
+    final idx = getStartingIndex();
+    if (idx == 0) {
+      await loadFeed();
+    } else if (idx == 3 || idx == 4) {
+      await loadLandingSections();
+    }
+  }
+
+  void _showHomeItemOptions(Channel c, {bool fromRecents = false}) {
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        builder: (ctx) {
+          return FutureBuilder<Map<String, bool>>(
+              future: Sql.getHomeFlagsSingle(c.id!),
+              builder: (context, snap) {
+                final data = snap.data ?? {"hide_recent": false, "hide_all": false, "pinned": false};
+                final hiddenRecent = data["hide_recent"] == true;
+                final hiddenAll = data["hide_all"] == true;
+                final pinned = data["pinned"] == true;
+                return SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (fromRecents) 
+                          ListTile(
+                            leading: Icon(hiddenRecent ? Icons.visibility : Icons.visibility_off),
+                            title: Text(hiddenRecent ? 'Unhide in Recents' : 'Hide from Recents'),
+                            onTap: () async {
+                              await Sql.setHideRecent(c.id!, !hiddenRecent);
+                              if (!mounted) return;
+                              Navigator.of(context).pop();
+                              await loadFeed();
+                            },
+                          ),
+                        ListTile(
+                          leading: Icon(hiddenAll ? Icons.visibility : Icons.visibility_off_outlined),
+                          title: Text(hiddenAll ? 'Unhide from Home' : 'Hide permanently from Home'),
+                          onTap: () async {
+                            await Sql.setHideAll(c.id!, !hiddenAll);
+                            if (!mounted) return;
+                            Navigator.of(context).pop();
+                            await loadFeed();
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(pinned ? Icons.push_pin : Icons.push_pin_outlined),
+                          title: Text(pinned ? 'Unpin' : 'Pin to top'),
+                          onTap: () async {
+                            await Sql.setPinned(c.id!, !pinned);
+                            if (!mounted) return;
+                            Navigator.of(context).pop();
+                            await loadFeed();
+                          },
+                        ),
+                        const SizedBox(height: 4),
+                        ListTile(
+                          leading: const Icon(Icons.close),
+                          title: const Text('Close'),
+                          onTap: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              });
+        });
+  }
+
+  Widget _channelCard(Channel c, {bool playLiveOnTap = false, bool fromRecents = false, bool enableOptions = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: InkWell(
@@ -859,58 +1061,89 @@ class _HomeState extends State<Home> {
                 MaterialPageRoute(
                     builder: (_) => DetailsPage(
                           channel: c,
+                          onFavoriteToggled: _onFavoriteToggled,
                         )));
           }
           if (mounted) setState(() {});
         },
+        onLongPress: enableOptions ? () => _showHomeItemOptions(c, fromRecents: fromRecents) : null,
         child: SizedBox(
           width: 140,
+          height: 210,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: ClipRRect(
+              Container(
+                width: 140,
+                height: 160,
+                decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: FutureBuilder<String?>(
-                          future: PosterResolver.resolveBestPoster(c),
-                          builder: (context, snap) {
-                            final url = snap.data ?? c.image?.trim();
-                            if (url != null && url.isNotEmpty) {
-                              return CachedNetworkImage(
-                                imageUrl: url,
-                                cacheManager: ImageCacheManager.instance,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Image.asset(
+                ),
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Builder(
+                        builder: (context) {
+                          final url = c.image?.trim();
+                          if (url != null && url.isNotEmpty) {
+                            return Image.network(
+                              url,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) {
+                                return Image.asset(
                                   'assets/icon.png',
                                   fit: BoxFit.cover,
-                                ),
-                              );
-                            }
-                            return Image.asset(
-                              'assets/icon.png',
-                              fit: BoxFit.cover,
+                                );
+                              },
+                              loadingBuilder: (_, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Container(
+                                  color: Theme.of(context).colorScheme.surfaceContainer,
+                                  child: const Center(
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                );
+                              },
                             );
-                          },
-                        ),
+                          }
+                          return Image.asset(
+                            'assets/icon.png',
+                            fit: BoxFit.cover,
+                          );
+                        },
                       ),
-                      if (c.favorite)
-                        const Positioned(
-                          top: 6,
-                          right: 6,
-                          child: Icon(Icons.favorite, color: Color(0xFFE50914)),
-                        ),
-                    ],
-                  ),
+                    ),
+                    if (c.favorite)
+                      const Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Icon(Icons.favorite, color: Color(0xFFE50914)),
+                      ),
+                    if (enableOptions && c.id != null)
+                      FutureBuilder<Map<String, bool>>(
+                        future: Sql.getHomeFlagsSingle(c.id!),
+                        builder: (context, snap) {
+                          final pinned = (snap.data?['pinned'] ?? false) == true;
+                          if (!pinned) return const SizedBox.shrink();
+                          return const Positioned(
+                            top: 6,
+                            left: 6,
+                            child: Icon(Icons.push_pin, color: Colors.amber),
+                          );
+                        },
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                c.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+              Expanded(
+                child: Text(
+                  c.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12),
+                ),
               )
             ],
           ),

@@ -12,13 +12,16 @@ import 'package:smart_iptv_pro/models/settings.dart';
 import 'package:smart_iptv_pro/setup.dart';
 import 'package:smart_iptv_pro/onboarding.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
+import 'package:smart_iptv_pro/image_cache_manager.dart';
 
 Future<void> main() async {
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    debugPrint('FlutterError: \'${details.exceptionAsString()}\'');
-    if (details.stack != null) {
-      debugPrint(details.stack.toString());
+    if (kDebugMode) {
+      debugPrint('FlutterError: \'${details.exceptionAsString()}\'');
+      if (details.stack != null) {
+        debugPrint(details.stack.toString());
+      }
     }
   };
 
@@ -34,6 +37,7 @@ Future<void> main() async {
     try {
       await dotenv.dotenv.load(fileName: ".env");
     } catch (_) {}
+    await ImageCacheManager.initialize();
     final hasSources = await Sql.hasSources();
     final settings = await SettingsService.getSettings();
     final hasSeenOnboarding = await SettingsService.getHasSeenOnboarding();
@@ -46,8 +50,10 @@ Future<void> main() async {
       showOnboarding: !hasSeenOnboarding,
     ));
   }, (Object error, StackTrace stack) {
-    debugPrint('Uncaught error: $error');
-    debugPrint(stack.toString());
+    if (kDebugMode) {
+      debugPrint('Uncaught error: $error');
+      debugPrint(stack.toString());
+    }
   });
 }
 

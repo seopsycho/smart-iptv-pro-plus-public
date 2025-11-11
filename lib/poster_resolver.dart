@@ -13,7 +13,8 @@ class PosterResolver {
     // Cache by channel id if available, else by title
     final cacheKeyId = c.id;
     if (cacheKeyId != null && _cacheById.containsKey(cacheKeyId)) {
-      return _cacheById[cacheKeyId];
+      final cached = _cacheById[cacheKeyId];
+      return cached;
     }
     final titleKey = c.name.toLowerCase().trim();
     if (_cacheByTitle.containsKey(titleKey)) {
@@ -46,7 +47,9 @@ class PosterResolver {
           return url;
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      // Silently handle TMDB errors
+    }
 
     // 3) Fallback to channel image (Xtream/M3U)
     url = c.image?.trim();

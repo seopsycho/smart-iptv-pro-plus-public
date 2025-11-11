@@ -162,45 +162,73 @@ class _PlayerState extends State<Player> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) {
-          onExit();
-        },
-        child: Scaffold(
-            backgroundColor: Colors.black,
-            body: MaterialVideoControlsTheme(
-              normal: getThemeData(context),
-              fullscreen: getThemeData(context),
-              child: Video(
-                key: key,
-                controller: videoController,
-                onExitFullscreen: () async => onExit(),
-              ),
-            )));
+    return WillPopScope(
+      onWillPop: () async {
+        onExit();
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: MaterialVideoControlsTheme(
+          normal: getThemeData(context),
+          fullscreen: getThemeData(context),
+          child: Video(
+            key: key,
+            controller: videoController,
+            onExitFullscreen: () async {
+              onExit();
+            },
+          ),
+        )
+      )
+    );
   }
 
-  void onExit() async {
+  void onExit() {
     if (exiting) return;
     exiting = true;
-    if (widget.channel.mediaType == MediaType.movie &&
-        widget.channel.id != null) {
-      Sql.setPosition(widget.channel.id!, player.state.position.inSeconds);
-    }
-    if (key.currentState!.isFullscreen()) {
-      await key.currentState!.exitFullscreen();
-    }
-    try {
-      await _airPlayCh.invokeMethod('stop');
-    } catch (_) {}
-    Navigator.of(context).pop();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    Future(() async {
+      // Save position for movies
+      try {
+        if (widget.channel.mediaType == MediaType.movie &&
+            widget.channel.id != null) {
+          Sql.setPosition(
+              widget.channel.id!, player.state.position.inSeconds);
+        }
+      } catch (_) {}
+      // Exit fullscreen first to avoid iOS orientation warnings
+      try {
+        if (key.currentState?.isFullscreen() == true) {
+          await key.currentState!
+              .exitFullscreen()
+              .timeout(const Duration(milliseconds: 600));
+        }
+      } catch (_) {}
+      // Stop AirPlay session if any
+      try {
+        await _airPlayCh
+            .invokeMethod('stop')
+            .timeout(const Duration(milliseconds: 600));
+      } catch (_) {}
+      // Only adjust orientations on Android; iOS restricts programmatic changes
+      try {
+        if (Platform.isAndroid) {
+          SystemChrome.setPreferredOrientations([
+            DeviceOrientation.portraitUp,
+            DeviceOrientation.portraitDown,
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        }
+      } catch (_) {}
+      // Finally pop the page
+      if (mounted) {
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+      }
+    });
   }
 
   void toggleZoom() {

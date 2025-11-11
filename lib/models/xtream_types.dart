@@ -6,6 +6,8 @@ class XtreamStream {
   final String? seriesId;
   final String? cover;
   final String? containerExtension;
+  final int? added;
+  final int? lastModified;
 
   XtreamStream({
     this.streamId,
@@ -15,6 +17,8 @@ class XtreamStream {
     this.seriesId,
     this.cover,
     this.containerExtension,
+    this.added,
+    this.lastModified,
   });
 
   factory XtreamStream.fromJson(Map<String, dynamic> json) {
@@ -26,8 +30,17 @@ class XtreamStream {
       seriesId: json['series_id']?.toString(),
       cover: json['cover'],
       containerExtension: json['container_extension'],
+      added: _toInt(json['added']),
+      lastModified: _toInt(json['last_modified']),
     );
   }
+}
+
+int? _toInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  final s = v.toString();
+  return int.tryParse(s);
 }
 
 class XtreamSeries {

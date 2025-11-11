@@ -17,11 +17,15 @@ class ChannelTile extends StatefulWidget {
   final Channel channel;
   final BuildContext parentContext;
   final Function(Node node) setNode;
+  final VoidCallback? onFavoriteToggled;
+  final ValueChanged<Channel>? onShowDetails;
   const ChannelTile(
       {super.key,
       required this.channel,
       required this.setNode,
-      required this.parentContext});
+      required this.parentContext,
+      this.onFavoriteToggled,
+      this.onShowDetails});
 
   @override
   State<ChannelTile> createState() => _ChannelTileState();
@@ -51,6 +55,7 @@ class _ChannelTileState extends State<ChannelTile> {
       setState(() {
         widget.channel.favorite = !widget.channel.favorite;
       });
+      widget.onFavoriteToggled?.call();
       final msg = widget.channel.favorite
           ? "Added to watchlist"
           : "Removed from watchlist";
@@ -86,12 +91,17 @@ class _ChannelTileState extends State<ChannelTile> {
       if (mounted) setState(() {});
       return;
     }
-    await Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (_) => DetailsPage(
-                  channel: widget.channel,
-                )));
+    if (widget.onShowDetails != null) {
+      widget.onShowDetails!(widget.channel);
+    } else {
+      await Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => DetailsPage(
+                    channel: widget.channel,
+                    onFavoriteToggled: widget.onFavoriteToggled,
+                  )));
+    }
     if (mounted) setState(() {});
   }
 
@@ -136,16 +146,23 @@ class _ChannelTileState extends State<ChannelTile> {
                                   child: Stack(
                                     children: [
                                       Positioned.fill(
-                                        child: FutureBuilder<String?>(
-                                          future: PosterResolver.resolveBestPoster(widget.channel),
-                                          builder: (context, snap) {
-                                            final url = snap.data ?? widget.channel.image?.trim();
+                                        child: Builder(
+                                          builder: (context) {
+                                            final url = widget.channel.image?.trim();
                                             if (url != null && url.isNotEmpty) {
-                                              return CachedNetworkImage(
+                                              return Image.network(
+                                                url,
                                                 fit: BoxFit.cover,
-                                                cacheManager: ImageCacheManager.instance,
-                                                errorWidget: (_, __, ___) => Image.asset("assets/icon.png", fit: BoxFit.cover),
-                                                imageUrl: url,
+                                                errorBuilder: (_, __, ___) => Image.asset("assets/icon.png", fit: BoxFit.cover),
+                                                loadingBuilder: (_, child, loadingProgress) {
+                                                  if (loadingProgress == null) return child;
+                                                  return Container(
+                                                    color: Theme.of(context).colorScheme.surfaceContainer,
+                                                    child: const Center(
+                                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                                    ),
+                                                  );
+                                                },
                                               );
                                             }
                                             return Image.asset(

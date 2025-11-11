@@ -194,6 +194,26 @@ class DbFactory {
             ADD COLUMN fail_reason varchar(500);
           ''');
         }
+      }))
+      ..add(SqliteMigration(8, (tx) async {
+        await tx.execute('''
+          CREATE TABLE "home_flags" (
+            "channel_id" integer PRIMARY KEY,
+            "hide_recent" integer DEFAULT 0,
+            "hide_all" integer DEFAULT 0,
+            "pinned" integer DEFAULT 0,
+            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
+          );
+        ''');
+        await tx.execute('''
+          CREATE UNIQUE INDEX IF NOT EXISTS index_home_flags_channel_id ON home_flags(channel_id);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_home_flags_hide_all ON home_flags(hide_all);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_home_flags_pinned ON home_flags(pinned);
+        ''');
       }));
     await migrations.migrate(db);
     // Improve concurrency: readers don't block writers and vice-versa

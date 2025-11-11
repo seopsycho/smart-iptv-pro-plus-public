@@ -11,6 +11,7 @@ import 'package:smart_iptv_pro/models/home_manager.dart';
 import 'package:smart_iptv_pro/models/source.dart';
 import 'package:smart_iptv_pro/models/source_type.dart';
 import 'package:smart_iptv_pro/error.dart';
+import 'package:smart_iptv_pro/adaptive/breakpoints.dart';
 
 class Setup extends StatefulWidget {
   final bool showAppBar;
@@ -84,8 +85,17 @@ class _SetupState extends State<Setup> {
                     },
                     key: _formKey,
                     child: Center(
+                        child: LayoutBuilder(builder: (context, constraints) {
+                      final cls = sizeClassOf(context);
+                      final maxW = cls == WindowSizeClass.expanded
+                          ? 680.0
+                          : (cls == WindowSizeClass.medium ? 560.0 : 480.0);
+                      return SizedBox(
+                        width: maxW,
                         child: SingleChildScrollView(
-                      child: Column(children: [
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
                         ToggleButtons(
                           isSelected: List.generate(
                               3, (index) => index == _selectedIndex),
@@ -118,9 +128,8 @@ class _SetupState extends State<Setup> {
                         ),
                         const SizedBox(height: 20),
                         Padding(
-                          padding: EdgeInsets.symmetric(
-                              horizontal:
-                                  MediaQuery.of(context).size.width * 0.1),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 16.0),
                           child: FormBuilderTextField(
                             autovalidateMode:
                                 AutovalidateMode.onUserInteraction,
@@ -152,9 +161,8 @@ class _SetupState extends State<Setup> {
                         if (_selectedIndex == SourceType.xtream.index ||
                             _selectedIndex == SourceType.m3uUrl.index)
                           Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal:
-                                      MediaQuery.of(context).size.width * 0.1),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0),
                               child: FormBuilderTextField(
                                 autovalidateMode:
                                     AutovalidateMode.onUserInteraction,
@@ -186,9 +194,8 @@ class _SetupState extends State<Setup> {
                           const SizedBox(height: 15),
                         if (_selectedIndex == SourceType.xtream.index)
                           Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal:
-                                      MediaQuery.of(context).size.width * 0.1),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0),
                               child: FormBuilderTextField(
                                 autovalidateMode:
                                     AutovalidateMode.onUserInteraction,
@@ -207,9 +214,8 @@ class _SetupState extends State<Setup> {
                           const SizedBox(height: 15),
                         if (_selectedIndex == SourceType.xtream.index)
                           Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal:
-                                      MediaQuery.of(context).size.width * 0.1),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0),
                               child: FormBuilderTextField(
                                 autovalidateMode:
                                     AutovalidateMode.onUserInteraction,
@@ -360,8 +366,8 @@ class _SetupState extends State<Setup> {
                               Navigator.pushAndRemoveUntil(
                                 context,
                                 MaterialPageRoute(
-                                    builder: (context) => Home(
-                                        home: HomeManager.defaultManager())),
+                                  builder: (context) => Home(home: HomeManager.defaultManager()),
+                                ),
                                 (route) => false,
                               );
                             }
@@ -369,6 +375,13 @@ class _SetupState extends State<Setup> {
                           child: const Text("Submit"),
                         )
                       ]),
-                    ))))));
+                    ),
+                );
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
