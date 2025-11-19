@@ -1,0 +1,1 @@
+{"flutter":{"platforms":{"ios":{"default":{"projectId":"iptv-dc256","appId":"1:781602740599:ios:7964fd2a687c9af0ea6972","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"iptv-dc256","configurations":{"ios":"1:781602740599:ios:7964fd2a687c9af0ea6972"}}}}}}

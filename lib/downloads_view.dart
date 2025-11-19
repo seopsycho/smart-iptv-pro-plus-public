@@ -8,6 +8,7 @@ import 'package:smart_iptv_pro/backend/sql.dart';
 import 'package:smart_iptv_pro/models/download_item.dart';
 import 'package:smart_iptv_pro/player.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
+import 'package:smart_iptv_pro/services/analytics_service.dart';
 
 class DownloadsView extends StatefulWidget {
   final bool embedded;
@@ -25,6 +26,7 @@ class _DownloadsViewState extends State<DownloadsView> {
   @override
   void initState() {
     super.initState();
+    AnalyticsService.logScreenView('Downloads', screenClass: 'DownloadsView');
     _load();
   }
 

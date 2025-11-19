@@ -76,7 +76,6 @@ class SettingsService {
     settingsMap[showMovies] = (settings.showMovies ? 1 : 0).toString();
     settingsMap[showSeries] = (settings.showSeries ? 1 : 0).toString();
     settingsMap[tmdbApiKey] = settings.tmdbApiKey;
-    settingsMap[tmdbApiKey] = settings.tmdbApiKey;
     settingsMap[metadataProvider] = settings.metadataProvider;
     settingsMap[suppressDownloadWarning] = settings.suppressDownloadWarning ? '1' : '0';
     await Sql.updateSettings(settingsMap);

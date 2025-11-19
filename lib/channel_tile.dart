@@ -1,6 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:smart_iptv_pro/image_cache_manager.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
 // removed: xtream.dart, memory.dart (no longer used here)
 import 'package:smart_iptv_pro/models/channel.dart';
@@ -9,7 +7,6 @@ import 'package:smart_iptv_pro/models/media_type.dart';
 import 'package:smart_iptv_pro/models/node.dart';
 import 'package:smart_iptv_pro/models/node_type.dart';
 // removed: player.dart (playback now initiated from DetailsPage)
-import 'package:smart_iptv_pro/poster_resolver.dart';
 import 'package:smart_iptv_pro/details.dart';
 import 'package:smart_iptv_pro/player.dart';
 
@@ -131,10 +128,12 @@ class _ChannelTileState extends State<ChannelTile> {
               onTap: () async => await play(),
               borderRadius: BorderRadius.circular(12),
               focusColor: const Color(0x33E50914),
-              child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
+              child: Stack(
+                children: [
+                  Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
                       Expanded(
                           flex: 3,
                           child: ClipRRect(
@@ -172,12 +171,6 @@ class _ChannelTileState extends State<ChannelTile> {
                                           },
                                         ),
                                       ),
-                                      if (widget.channel.favorite)
-                                        const Positioned(
-                                          top: 6,
-                                          right: 6,
-                                          child: Icon(Icons.favorite, color: Color(0xFFE50914)),
-                                        ),
                                     ],
                                   )))),
                       const SizedBox(width: 12),
@@ -198,8 +191,18 @@ class _ChannelTileState extends State<ChannelTile> {
                               style: Theme.of(context).textTheme.bodyMedium,
                             );
                           }))
-                    ],
-                  )),
+                        ],
+                      )),
+                  if (widget.channel.favorite)
+                    const Positioned(
+                      top: 6,
+                      left: 6,
+                      child: IgnorePointer(
+                        child: Icon(Icons.favorite, color: Color(0xFFE50914)),
+                      ),
+                    ),
+                ],
+              ),
             )));
   }
 }

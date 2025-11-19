@@ -8,7 +8,7 @@ class WhatsNewModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text("What's new: update $version"),
+      title: Text("com.smartiptv.pro.RunnerTests: update $version"),
       actions: [
         TextButton(
           onPressed: () async {
@@ -25,6 +25,10 @@ class WhatsNewModal extends StatelessWidget {
             padding: EdgeInsets.only(right: 8.0),
             child: Text(
               '''
+Thanks for supporting SmartIPTV PRO+!
+
+We’re committed to giving you the best possible experience.
+
 Here’s what’s new:
 - iPad-optimized interface
 - Hide unwanted channels instantly
@@ -34,7 +38,6 @@ Here’s what’s new:
 - Integrated TMDB for personalized recommendations
 - Added Chromecast support
 - Added AirPlay support
-
 Coming soon:
 - Trakt integration
 - Live scores for sports and sport programs

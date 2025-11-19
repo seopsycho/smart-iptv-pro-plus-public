@@ -71,24 +71,24 @@ Future<void> getXtream(Source source, bool wipe,
   if (liveOk) {
     processXtream(
         statements,
-        processJsonList(liveStreamsJson as List, XtreamStream.fromJson),
-        processJsonList(liveCategoriesJson as List, XtreamCategory.fromJson),
+        processJsonList(liveStreamsJson, XtreamStream.fromJson),
+        processJsonList(liveCategoriesJson, XtreamCategory.fromJson),
         source,
         MediaType.livestream);
   }
   if (vodOk) {
     processXtream(
         statements,
-        processJsonList(vodsJson as List, XtreamStream.fromJson),
-        processJsonList(vodCategoriesJson as List, XtreamCategory.fromJson),
+        processJsonList(vodsJson, XtreamStream.fromJson),
+        processJsonList(vodCategoriesJson, XtreamCategory.fromJson),
         source,
         MediaType.movie);
   }
   if (seriesOk) {
     processXtream(
         statements,
-        processJsonList(seriesJson as List, XtreamStream.fromJson),
-        processJsonList(seriesCategoriesJson as List, XtreamCategory.fromJson),
+        processJsonList(seriesJson, XtreamStream.fromJson),
+        processJsonList(seriesCategoriesJson, XtreamCategory.fromJson),
         source,
         MediaType.serie);
   }
@@ -147,6 +147,15 @@ void processXtream(
 
 Channel xtreamToChannel(XtreamStream stream, Source source,
     MediaType streamType, String? categoryName) {
+  // Debug: log when we see a target channel name during Xtream parsing
+  if (stream.name?.toLowerCase().contains("зачарованные") == true) {
+    print("DEBUG PARSING: Found target channel in Xtream: '${stream.name}'");
+    print("DEBUG PARSING: categoryName=$categoryName, streamId=${stream.streamId}");
+  }
+  // Also log any channel with Cyrillic characters for inspection
+  if (stream.name?.contains(RegExp(r'[а-яё]')) == true) {
+    print("DEBUG PARSING: Cyrillic channel found in Xtream: '${stream.name}'");
+  }
   return Channel(
       name: stream.name!,
       mediaType: streamType,

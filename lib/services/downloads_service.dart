@@ -1,413 +1,222 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
+import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
-import 'package:smart_iptv_pro/backend/utils.dart';
 import 'package:smart_iptv_pro/models/channel.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:background_downloader/background_downloader.dart' as bg;
+import 'package:smart_iptv_pro/models/download_item.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 class DownloadsService {
-  static final List<Channel> _queue = [];
-  static final Set<int> _activeIds = {};
-  static final Map<int, void Function()> _activeCancel = {};
-  static final Map<int, String> _bgTaskIds = {};
-  static StreamSubscription? _bgUpdatesSub;
-  static bool _useBg = true; // prefer background_downloader
-  static int _active = 0;
-  static int _maxConcurrent = 1;
-  static String _sanitize(String name) {
-    return name.replaceAll(RegExp(r"[^A-Za-z0-9\-_. ]+"), "").trim();
-  }
+  static bool _initialized = false;
+  static final Map<int, String> _activeTasks = {};
+  static final StreamController<DownloadUpdate> _updateController =
+      StreamController<DownloadUpdate>.broadcast();
+
+  static Stream<DownloadUpdate> get updates => _updateController.stream;
 
   static Future<void> init() async {
-    if (_bgUpdatesSub != null) return;
-    try { await bg.FileDownloader().start(); } catch (_) {}
-    _bgUpdatesSub = bg.FileDownloader().updates.listen((update) async {
-      try {
-        final meta = update.task.metaData ?? '';
-        int? channelId;
-        if (meta.isNotEmpty) {
-          try {
-            final m = json.decode(meta);
-            if (m is Map && m['channelId'] is int) channelId = m['channelId'] as int;
-          } catch (_) {}
-        }
-        if (channelId == null) return;
-        if (update is bg.TaskProgressUpdate) {
-          final hasSize = update.hasExpectedFileSize;
-          final total = hasSize ? update.expectedFileSize : 0;
-          final bytes = hasSize ? (update.progress * update.expectedFileSize).round() : (update.progress >= 0 ? 0 : 0);
-          await Sql.updateDownloadProgress(channelId, bytes, total);
-          return;
-        }
-        if (update is bg.TaskStatusUpdate) {
-          switch (update.status) {
-            case bg.TaskStatus.enqueued:
-              // If our pump has started this task, show as running; otherwise queued
-              if (_activeIds.contains(channelId)) {
-                await Sql.updateDownloadStatus(channelId, 0);
-              } else {
-                await Sql.updateDownloadStatus(channelId, 3);
-              }
-              break;
-            case bg.TaskStatus.running:
-              await Sql.updateDownloadStatus(channelId, 0);
-              break;
-            case bg.TaskStatus.complete:
-              // Mark full size if known
-              final total = update.responseHeaders?['content-length'] != null
-                  ? int.tryParse(update.responseHeaders!['content-length']!) ?? 0
-                  : 0;
-              if (total > 0) {
-                await Sql.updateDownloadProgress(channelId, total, total);
-              }
-              await Sql.updateDownloadStatus(channelId, 1);
-              break;
-            case bg.TaskStatus.failed:
-              await Sql.updateDownloadStatusReason(channelId, 2, 'Background download failed');
-              break;
-            case bg.TaskStatus.canceled:
-              await Sql.updateDownloadStatusReason(channelId, 2, 'Canceled');
-              break;
-            case bg.TaskStatus.notFound:
-              await Sql.updateDownloadStatusReason(channelId, 2, 'Not found (404)');
-              break;
-            case bg.TaskStatus.waitingToRetry:
-            case bg.TaskStatus.paused:
-              // keep as running to show spinner
-              await Sql.updateDownloadStatus(channelId, 0);
-              break;
-          }
-        }
-      } catch (_) {}
-    });
+    if (_initialized) return;
+
+    // Initialize flutter_downloader
+    await FlutterDownloader.initialize(
+      debug: false, // Set to true for debugging
+      ignoreSsl: true, // Ignore SSL certificate errors
+    );
+
+    // Listen for updates
+    FlutterDownloader.registerCallback(_downloadCallback);
+
+    _initialized = true;
   }
 
-  static Future<File> _targetFileFor(Channel channel) async {
-    final dir = await Utils.getDownloadsDir();
-    final uri = Uri.tryParse(channel.url ?? "");
-    final last =
-        uri?.pathSegments.isNotEmpty == true ? uri!.pathSegments.last : null;
-    final ext = (last != null && p.extension(last).isNotEmpty)
-        ? p.extension(last)
-        : ".mp4";
-    final base = _sanitize(channel.name.isNotEmpty ? channel.name : "download");
-    final fileName = channel.streamId != null
-        ? "${base}_${channel.streamId}$ext"
-        : "$base$ext";
-    return File(p.join(dir, fileName));
-  }
+  static Future<void> enqueue(Channel channel) async {
+    await init();
 
-  static Future<void> startDownload(Channel channel) async {
     if (channel.id == null || channel.url == null) return;
-    final file = await _targetFileFor(channel);
-    int existing = 0;
-    try {
-      if (await file.exists()) {
-        existing = await file.length();
-      }
-    } catch (_) {}
+
+    // Get downloads directory
+    final directory = await getApplicationDocumentsDirectory();
+    final downloadsDir = Directory(path.join(directory.path, 'downloads'));
+    if (!await downloadsDir.exists()) {
+      await downloadsDir.create(recursive: true);
+    }
+
+    // Create filename from channel name
+    final safeName = channel.name?.replaceAll(RegExp(r'[<>:"/\|?*]'), '_') ??
+        'channel_${channel.id}';
+    final filename = '$safeName.mp4';
+    final filePath = path.join(downloadsDir.path, filename);
+
+    // Mark as pending in database
     await Sql.upsertDownload(
       channelId: channel.id!,
-      filePath: file.path,
-      status: 3, // queued (shown in UI)
-      bytes: existing,
+      filePath: filePath,
+      status: 0, // pending
+      bytes: 0,
       totalBytes: 0,
     );
-    if (!_queue.any((c) => c.id == channel.id) && !_activeIds.contains(channel.id)) {
-      _queue.add(channel);
+
+    try {
+      // Create download task
+      final taskId = await FlutterDownloader.enqueue(
+        url: channel.url!,
+        savedDir: downloadsDir.path,
+        fileName: filename,
+        showNotification: true,
+        openFileFromNotification: false,
+      );
+
+      if (taskId != null) {
+        _activeTasks[channel.id!] = taskId;
+      }
+
+      // Update database with task ID
+      await Sql.upsertDownload(
+        channelId: channel.id!,
+        filePath: filePath,
+        status: 1, // downloading
+        bytes: 0,
+        totalBytes: 0,
+      );
+    } catch (e) {
+      // Mark as failed if enqueue fails
+      await Sql.updateDownloadStatusReason(
+        channel.id!,
+        2, // failed
+        e.toString(),
+      );
     }
-    _pumpQueue();
   }
 
   static void setMaxConcurrent(int n) {
-    _maxConcurrent = n < 1 ? 1 : n;
-    _pumpQueue();
+    // flutter_downloader handles this automatically
   }
 
-  static void _pumpQueue() {
-    while (_active < _maxConcurrent && _queue.isNotEmpty) {
-      final ch = _queue.removeAt(0);
-      if (ch.id == null) continue;
-      if (_activeIds.contains(ch.id)) continue;
-      _active += 1;
-      _activeIds.add(ch.id!);
-      unawaited(WakelockPlus.enable());
-      unawaited(() async {
-        try {
-          await Sql.updateDownloadStatus(ch.id!, 0); // downloading
-        } catch (_) {}
-        try {
-          if (_useBg) {
-            await _runBgDownloadTask(ch);
-          } else {
-            await _runDownloadTask(ch);
-          }
-        } finally {
-          _active = (_active - 1).clamp(0, 1 << 30);
-          _activeIds.remove(ch.id);
-          _activeCancel.remove(ch.id);
-          if (_active <= 0) {
-            try { await WakelockPlus.disable(); } catch (_) {}
-          }
-          _pumpQueue();
-        }
-      }());
+  static Future<void> cancel(int channelId) async {
+    final taskId = _activeTasks[channelId];
+    if (taskId != null) {
+      await FlutterDownloader.cancel(taskId: taskId);
+      _activeTasks.remove(channelId);
     }
   }
 
-  static Future<void> _runBgDownloadTask(Channel channel) async {
-    final file = await _targetFileFor(channel);
-    final headers = await Sql.getChannelHeaders(channel.id!);
-    final task = bg.DownloadTask(
-      url: channel.url!,
-      filename: p.basename(file.path),
-      directory: 'downloads',
-      baseDirectory: bg.BaseDirectory.applicationSupport,
-      updates: bg.Updates.statusAndProgress,
-      retries: 3,
-      allowPause: true,
-      metaData: json.encode({'channelId': channel.id}),
-      headers: {
-        if (headers?.referrer != null) 'Referer': headers!.referrer!,
-        if (headers?.httpOrigin != null) 'Origin': headers!.httpOrigin!,
-        if (headers?.userAgent != null) 'User-Agent': headers!.userAgent!,
-      },
-    );
-    _bgTaskIds[channel.id!] = task.taskId;
-    // Allow cancel
-    _activeCancel[channel.id!] = () async {
-      try { await bg.FileDownloader().cancelTasksWithIds([task.taskId]); } catch (_) {}
-    };
-    try {
-      final result = await bg.FileDownloader().download(task);
-      if (result.status != bg.TaskStatus.complete) {
-        try { await _runDownloadTask(channel); return; } catch (e) {}
-        final reason = () {
-          switch (result.status) {
-            case bg.TaskStatus.canceled:
-              return 'Canceled';
-            case bg.TaskStatus.notFound:
-              return 'Not found (404)';
-            case bg.TaskStatus.failed:
-              return 'Background download failed';
-            default:
-              return 'Background download error';
-          }
-        }();
-        await Sql.updateDownloadStatusReason(channel.id!, 2, reason);
-      }
-    } catch (e) {
-      try { await _runDownloadTask(channel); return; } catch (_) {}
-      await Sql.updateDownloadStatusReason(channel.id!, 2, 'Background exception');
-    }
+  static Future<void> cancelAll() async {
+    await FlutterDownloader.cancelAll();
+    _activeTasks.clear();
   }
 
-  static Future<void> _runDownloadTask(Channel channel) async {
-    const int maxRetries = 3;
-    const Duration connectTimeout = Duration(seconds: 20);
-    const Duration inactivity = Duration(seconds: 30);
-    int attempt = 0;
-    final file = await _targetFileFor(channel);
-    String? lastReason;
-    while (true) {
-      attempt += 1;
-      final client = http.Client();
-      IOSink? sink;
-      StreamSubscription<List<int>>? sub;
-      Timer? watchdog;
-      try {
-        int existing = 0;
-        try {
-          if (await file.exists()) {
-            existing = await file.length();
-          } else {
-            await file.create(recursive: true);
-          }
-        } catch (_) {}
-        final headers = await Sql.getChannelHeaders(channel.id!);
-        final req = http.Request('GET', Uri.parse(channel.url!));
-        if (headers != null) {
-          if (headers.referrer != null) req.headers['Referer'] = headers.referrer!;
-          if (headers.httpOrigin != null) req.headers['Origin'] = headers.httpOrigin!;
-          if (headers.userAgent != null) req.headers['User-Agent'] = headers.userAgent!;
-        }
-        if (existing > 0) {
-          req.headers['Range'] = 'bytes=' + existing.toString() + '-';
-        }
-        final resp = await client.send(req).timeout(connectTimeout);
-        if (resp.statusCode == 416) {
-          // Already fully downloaded
-          await Sql.updateDownloadProgress(channel.id!, existing, existing);
-          await Sql.updateDownloadStatus(channel.id!, 1);
-          return;
-        }
-        if (!(resp.statusCode == 200 || (existing > 0 && resp.statusCode == 206))) {
-          lastReason = 'HTTP ${resp.statusCode}';
-          throw HttpException(lastReason!, uri: Uri.parse(channel.url!));
-        }
-        final append = existing > 0 && resp.statusCode == 206;
-        int received = append ? existing : 0;
-        int total = 0;
-        final cr = resp.headers['content-range'];
-        if (cr != null) {
-          final slash = cr.lastIndexOf('/');
-          if (slash != -1) {
-            final t = int.tryParse(cr.substring(slash + 1).trim());
-            if (t != null) total = t;
-          }
-        } else if (resp.contentLength != null) {
-          final cl = resp.contentLength!;
-          total = append ? existing + cl : cl;
-        }
-        sink = file.openWrite(mode: append ? FileMode.append : FileMode.write);
-        final completer = Completer<void>();
-        void resetWatchdog() {
-          watchdog?.cancel();
-          watchdog = Timer(inactivity, () async {
-            try { await sub?.cancel(); } catch (_) {}
-            try { await sink?.flush(); } catch (_) {}
-            try { await sink?.close(); } catch (_) {}
-            lastReason = 'Timed out (inactivity)';
-            if (!completer.isCompleted) completer.completeError(TimeoutException('inactivity'));
-          });
-        }
-        sub = resp.stream.listen(
-          (chunk) async {
-            received += chunk.length;
-            sink!.add(chunk);
-            await Sql.updateDownloadProgress(channel.id!, received, total);
-            resetWatchdog();
-          },
-          onError: (e) async {
-            try { watchdog?.cancel(); } catch (_) {}
-            try { await sink?.flush(); } catch (_) {}
-            try { await sink?.close(); } catch (_) {}
-            if (e is TimeoutException) {
-              lastReason = lastReason ?? 'Timed out';
-            } else if (e is HttpException) {
-              lastReason = lastReason ?? e.message;
-            } else {
-              lastReason = lastReason ?? e.toString();
-            }
-            if (!completer.isCompleted) completer.completeError(e);
-          },
-          onDone: () async {
-            try { watchdog?.cancel(); } catch (_) {}
-            try { await sink?.flush(); } catch (_) {}
-            try { await sink?.close(); } catch (_) {}
-            await Sql.updateDownloadProgress(channel.id!, received, total > 0 ? total : received);
-            await Sql.updateDownloadStatus(channel.id!, 1);
-            if (!completer.isCompleted) completer.complete();
-          },
-          cancelOnError: true,
-        );
-        // Register cancel handler for this active task
-        _activeCancel[channel.id!] = () async {
-          try { await sub?.cancel(); } catch (_) {}
-          try { await sink?.flush(); } catch (_) {}
-          try { await sink?.close(); } catch (_) {}
-          try { client.close(); } catch (_) {}
-        };
-        resetWatchdog();
-        await completer.future;
-        return;
-      } catch (e) {
-        if (e is TimeoutException) {
-          lastReason = lastReason ?? 'Timed out';
-        } else if (e is HttpException) {
-          lastReason = lastReason ?? e.message;
-        } else {
-          lastReason = lastReason ?? e.toString();
-        }
-        if (attempt >= maxRetries) {
-          await Sql.updateDownloadStatusReason(channel.id!, 2, lastReason);
-          return;
-        } else {
-          final backoff = Duration(seconds: attempt * attempt);
-          await Future.delayed(backoff);
-        }
-      } finally {
-        try { watchdog?.cancel(); } catch (_) {}
-        try { await sub?.cancel(); } catch (_) {}
-        try { await sink?.flush(); } catch (_) {}
-        try { await sink?.close(); } catch (_) {}
-        client.close();
-      }
-    }
-  }
-
-  static Future<void> cancelDownload(int channelId) async {
-    // Remove from queue if present
-    _queue.removeWhere((c) => c.id == channelId);
-    if (_useBg) {
-      try {
-        String? tid = _bgTaskIds[channelId];
-        if (tid == null) {
-          final tasks = await bg.FileDownloader().allTasks();
-          for (final t in tasks) {
-            try {
-              final m = t.metaData;
-              if (m != null) {
-                final obj = json.decode(m);
-                if (obj is Map && obj['channelId'] == channelId) { tid = t.taskId; break; }
-              }
-            } catch (_) {}
-          }
-        }
-        if (tid != null) {
-          await bg.FileDownloader().cancelTasksWithIds([tid]);
-        }
-      } catch (_) {}
-    }
-    // Cancel active if running
-    final cancel = _activeCancel[channelId];
-    if (cancel != null) {
-      try { cancel(); } catch (_) {}
-    }
-    await Sql.updateDownloadStatusReason(channelId, 2, 'Canceled');
-    // Continue with remaining queued items
-    _pumpQueue();
+  static Future<void> startDownload(Channel channel) async {
+    await enqueue(channel);
   }
 
   static Future<void> removeDownload(int channelId) async {
-    // Cancel if active or queued
-    await cancelDownload(channelId);
-    final di = await Sql.getDownload(channelId);
-    if (di != null) {
-      try {
-        final f = File(di.filePath);
-        if (await f.exists()) {
-          await f.delete();
-        }
-      } catch (_) {}
-    }
+    await cancel(channelId);
     await Sql.deleteDownload(channelId);
-    _pumpQueue();
   }
 
   static Future<void> clearAllDownloads() async {
-    try {
-      final dirPath = await Utils.getDownloadsDir();
-      final dir = Directory(dirPath);
-      if (await dir.exists()) {
-        await for (final f in dir.list()) {
-          if (f is File) {
-            try { await f.delete(); } catch (_) {}
-          }
-        }
-      }
-    } catch (_) {}
-    // Cancel any active & clear queue
-    for (final entry in _activeCancel.entries) {
-      try { entry.value(); } catch (_) {}
-    }
-    _activeCancel.clear();
-    _queue.clear();
+    await cancelAll();
     await Sql.deleteAllDownloads();
   }
+
+  static Future<List<DownloadItem>> getAllDownloads() async {
+    return await Sql.getAllDownloads();
+  }
+
+  static Future<DownloadItem?> getDownload(int channelId) async {
+    return await Sql.getDownload(channelId);
+  }
+
+  // Static callback function for flutter_downloader
+  @pragma('vm:entry-point')
+  static void _downloadCallback(String id, int status, int progress) {
+    // Find channel ID from task ID
+    final channelId = _findChannelIdByTaskId(id);
+    if (channelId == null) return;
+
+    int dbStatus = 0; // pending
+    String? failReason;
+
+    switch (status) {
+      case 1: // DownloadTaskStatus.running
+        dbStatus = 1; // downloading
+        break;
+      case 2: // DownloadTaskStatus.complete
+        dbStatus = 3; // completed
+        break;
+      case 3: // DownloadTaskStatus.failed
+        dbStatus = 2; // failed
+        failReason = 'Download failed';
+        break;
+      case 4: // DownloadTaskStatus.canceled
+        dbStatus = 4; // canceled
+        break;
+      case 5: // DownloadTaskStatus.paused
+        dbStatus = 5; // paused
+        break;
+      default:
+        break;
+    }
+
+    // Update database using appropriate method
+    if (failReason != null) {
+      Sql.updateDownloadStatusReason(channelId, dbStatus, failReason).then((_) {
+        // Notify listeners
+        _updateController.add(DownloadUpdate(
+          channelId: channelId,
+          status: dbStatus,
+          progress: progress / 100.0,
+          failReason: failReason,
+        ));
+      });
+    } else {
+      Sql.upsertDownload(
+        channelId: channelId,
+        filePath: '', // Will be updated when task completes
+        status: dbStatus,
+        bytes: 0,
+        totalBytes: 0,
+      ).then((_) {
+        // Notify listeners
+        _updateController.add(DownloadUpdate(
+          channelId: channelId,
+          status: dbStatus,
+          progress: progress / 100.0,
+        ));
+      });
+    }
+
+    // Clean up active task if complete/failed/canceled
+    if (status >= 2) {
+      _activeTasks.remove(channelId);
+    }
+  }
+
+  static int? _findChannelIdByTaskId(String taskId) {
+    for (final entry in _activeTasks.entries) {
+      if (entry.value == taskId) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  static void dispose() {
+    _updateController.close();
+  }
+}
+
+class DownloadUpdate {
+  final int channelId;
+  final int status;
+  final double progress;
+  final String? failReason;
+
+  DownloadUpdate({
+    required this.channelId,
+    required this.status,
+    required this.progress,
+    this.failReason,
+  });
 }

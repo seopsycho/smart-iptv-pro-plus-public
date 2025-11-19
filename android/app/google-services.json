@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "781602740599",
+    "project_id": "iptv-dc256",
+    "storage_bucket": "iptv-dc256.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781602740599:android:fd5f2d0b124eb625ea6972",
+        "android_client_info": {
+          "package_name": "com.smartiptv.proplus"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDytqVlweRbyt0N12PZ8Ol2mks8b4bI24A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -14,8 +14,6 @@ import 'package:smart_iptv_pro/models/view_type.dart';
 import 'package:sqlite_async/sqlite3.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 
-const int pageSize = 36;
-
 class Sql {
   static Future<void> commitWrite(
       List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
@@ -185,11 +183,11 @@ class Sql {
     var results = await db.getAll('''
       SELECT * FROM channels
       WHERE url IS NOT NULL
-        AND favorite = 1
+        AND favorite = ?
         AND source_id IN (${generatePlaceholders(sourceIds.length)})
       ORDER BY id DESC
       LIMIT ?
-    ''', [...sourceIds, limit]);
+    ''', [1, ...sourceIds, limit]);
     return results.map(rowToChannel).toList();
   }
 
@@ -199,12 +197,12 @@ class Sql {
     var results = await db.getAll('''
       SELECT * FROM channels
       WHERE url IS NOT NULL
-        AND favorite = 1
+        AND favorite = ?
         AND media_type = ?
         AND source_id IN (${generatePlaceholders(sourceIds.length)})
       ORDER BY id DESC
       LIMIT ?
-    ''', [mediaType.index, ...sourceIds, limit]);
+    ''', [1, mediaType.index, ...sourceIds, limit]);
     return results.map(rowToChannel).toList();
   }
 
@@ -230,12 +228,12 @@ class Sql {
     var results = await db.getAll('''
       SELECT * FROM channels
       WHERE url IS NOT NULL
-        AND favorite = 1
+        AND favorite = ?
         AND media_type IN ($mtPlaceholders)
       AND source_id IN (${generatePlaceholders(sourceIds.length)})
       ORDER BY id DESC
       LIMIT ?
-    ''', [...mediaTypes.map((m) => m.index), ...sourceIds, limit]);
+    ''', [1, ...mediaTypes.map((m) => m.index), ...sourceIds, limit]);
     return results.map(rowToChannel).toList();
   }
 
@@ -247,7 +245,7 @@ class Sql {
       INSERT INTO groups (name, image, source_id, media_type)
       SELECT group_name, MAX(image), ?, media_type
       FROM channels
-      WHERE source_id = ?
+      WHERE source_id = ? AND group_name IS NOT NULL
       GROUP BY group_name, media_type
       ON CONFLICT(name, source_id) DO UPDATE SET
           media_type = excluded.media_type,
@@ -263,6 +261,25 @@ class Sql {
       )
       WHERE source_id = ?;
     ''', [sourceId]);
+
+      // Debug: after updating groups, check if target category was created
+      final target = "зачарованные";
+      final checkResult = await tx.getOptional('''
+        SELECT name FROM groups 
+        WHERE LOWER(name) LIKE ? AND source_id = ? AND name IS NOT NULL
+        LIMIT 1
+      ''', ['%$target%', sourceId]);
+      if (checkResult == null) {
+        print("DEBUG '$target' group not found after updateGroups for sourceId=$sourceId");
+        // Show some group names for sanity
+        final sampleRows = await tx.getAll('''
+          SELECT name FROM groups WHERE source_id = ? AND name IS NOT NULL LIMIT 10
+        ''', [sourceId]);
+        final sample = sampleRows.map((r) => r.columnAt(0) as String).toList();
+        print("DEBUG Sample groups for this source: $sample");
+      } else {
+        print("DEBUG '$target' group exists after updateGroups: ${checkResult.columnAt(0)}");
+      }
     };
   }
 
@@ -302,6 +319,10 @@ class Sql {
         ignoreSSL: row.columnAt(5));
   }
 
+  static Future<void> insertSource(Source source) async {
+    await commitWrite([getOrCreateSourceByName(source)]);
+  }
+
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
       getOrCreateSourceByName(Source source) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
@@ -333,24 +354,61 @@ class Sql {
       return searchGroup(filters);
     }
     var db = await DbFactory.db;
-    var offset = filters.page * pageSize - pageSize;
-    var mediaTypes = filters.seriesId == null
-        ? filters.mediaTypes!.map((x) => x.index)
-        : [1];
+    // Determine media types to include
+    List<int> mediaTypes;
+    if (filters.seriesId != null) {
+      // When drilling into a specific series, force movies/episodes only
+      mediaTypes = [MediaType.movie.index];
+    } else if (filters.viewType == ViewType.favorites) {
+      // In Favorites, if no explicit mediaTypes are set, include all base types
+      if (filters.mediaTypes == null) {
+        mediaTypes = [
+          MediaType.livestream.index,
+          MediaType.movie.index,
+          MediaType.serie.index,
+        ];
+      } else {
+        mediaTypes = filters.mediaTypes!.map((x) => x.index).toList();
+      }
+    } else {
+      mediaTypes = filters.mediaTypes!.map((x) => x.index).toList();
+    }
     var query = filters.query ?? "";
     var keywords = filters.useKeywords
         ? query.split(" ").map((f) => "%$f%").toList()
         : ["%$query%"];
+
+    // Skip name filter if query is empty
+    var nameFilterSql = "";
+    var useNameFilter = true;
+    if (query.trim().isEmpty) {
+      nameFilterSql = "1=1"; // Always true condition
+      useNameFilter = false; // Don't add keywords to params
+    } else {
+      nameFilterSql = getKeywordsSql(keywords.length);
+    }
+
     var sqlQuery = '''
         SELECT * FROM channels 
-        WHERE (${getKeywordsSql(keywords.length)})
+        WHERE ($nameFilterSql)
         AND media_type IN (${generatePlaceholders(mediaTypes.length)})
         AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
         AND url IS NOT NULL
     ''';
     List<Object> params = [];
+
+    // Add keywords to params only if there's an actual query
+    if (useNameFilter) {
+      params.addAll(keywords);
+    }
+
+    // Match placeholder order: mediaTypes, sourceIds, favorite flag, series/group, limit
+    params.addAll(mediaTypes);
+    params.addAll(filters.sourceIds!);
+
     if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
-      sqlQuery += "\nAND favorite = 1";
+      sqlQuery += "\nAND favorite = ?";
+      params.add(1);
     }
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nAND last_watched IS NOT NULL";
@@ -358,22 +416,94 @@ class Sql {
     }
     if (filters.seriesId != null) {
       sqlQuery += "\nAND series_id = ?";
-    } else if (filters.groupId != null) {
-      sqlQuery += "\nAND group_id = ?";
-    }
-    sqlQuery += "\nLIMIT ?, ?";
-    params.addAll(keywords);
-    params.addAll(mediaTypes);
-    params.addAll(filters.sourceIds!);
-    if (filters.seriesId != null) {
       params.add(filters.seriesId!);
     } else if (filters.groupId != null) {
+      sqlQuery += "\nAND group_id = ?";
       params.add(filters.groupId!);
     }
-    params.add(offset);
-    params.add(pageSize);
+
+    // Debug output for favorites search
+    if (filters.viewType == ViewType.favorites) {
+      print("DEBUG SQL Query: $sqlQuery");
+      print("DEBUG SQL Params: $params");
+    }
+
     var results = await db.getAll(sqlQuery, params);
-    return results.map(rowToChannel).toList();
+    var channels = results.map(rowToChannel).toList();
+
+    // Debug: Check if ADN TV+ is in results
+    if (filters.viewType == ViewType.favorites) {
+      final adnInResults = channels.any((c) => c.name == "ADN TV+");
+      print("DEBUG ADN TV+ in results: $adnInResults");
+      if (adnInResults) {
+        final adn = channels.firstWhere((c) => c.name == "ADN TV+");
+        print(
+            "DEBUG ADN TV+ details: id=${adn.id}, favorite=${adn.favorite}, mediaType=${adn.mediaType}, sourceId=${adn.sourceId}");
+      }
+    }
+
+    // Debug: Check if specific channel is in results for any search
+    if (useNameFilter) {
+      final target = "зачарованные";
+      final found = channels.any((c) => c.name.toLowerCase().contains(target));
+      if (!found) {
+        print("DEBUG '$target' NOT FOUND in search results. Query=${filters.query}, useKeywords=${filters.useKeywords}");
+        print("DEBUG SQL used: $sqlQuery");
+        print("DEBUG params: $params");
+        // Show a few channel names for sanity check
+        final sample = channels.take(5).map((c) => c.name).toList();
+        print("DEBUG Sample channel names: $sample");
+        
+        // Additional debug: Check if any channels contain the target word at all
+        if (filters.query?.toLowerCase().contains(target) == true) {
+          print("DEBUG User is searching for '$target' but it's not in results");
+          print("DEBUG Total channels returned: ${channels.length}");
+        }
+      } else {
+        final matched = channels.where((c) => c.name.toLowerCase().contains(target));
+        print("DEBUG '$target' FOUND: ${matched.map((c) => c.name).toList()}");
+      }
+    }
+
+    // Cyrillic-aware fallback: If SQLite LIKE returns 0 for non-ASCII case,
+    // re-query without name filter and filter in Dart using Unicode lowercasing.
+    bool _hasCyrillic(String s) => RegExp(r'[А-Яа-яЁё]').hasMatch(s);
+    if (useNameFilter && channels.isEmpty && _hasCyrillic(query)) {
+      var sqlQueryAlt = '''
+        SELECT * FROM channels 
+        WHERE (1=1)
+        AND media_type IN (${generatePlaceholders(mediaTypes.length)})
+        AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+        AND url IS NOT NULL
+      ''';
+      final altParams = <Object>[];
+      altParams.addAll(mediaTypes);
+      altParams.addAll(filters.sourceIds!);
+      if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+        sqlQueryAlt += "\nAND favorite = ?";
+        altParams.add(1);
+      }
+      if (filters.viewType == ViewType.history) {
+        sqlQueryAlt += "\nAND last_watched IS NOT NULL";
+        sqlQueryAlt += "\nORDER BY last_watched DESC";
+      }
+      if (filters.seriesId != null) {
+        sqlQueryAlt += "\nAND series_id = ?";
+        altParams.add(filters.seriesId!);
+      } else if (filters.groupId != null) {
+        sqlQueryAlt += "\nAND group_id = ?";
+        altParams.add(filters.groupId!);
+      }
+      final altResults = await db.getAll(sqlQueryAlt, altParams);
+      final ql = query.toLowerCase();
+      channels = altResults
+          .map(rowToChannel)
+          .where((c) => c.name.toLowerCase().contains(ql))
+          .toList();
+      print("DEBUG FALLBACK (Unicode LIKE): fetched ${altResults.length}, matched ${channels.length} for query '$query'");
+    }
+
+    return channels;
   }
 
   static Channel rowToChannel(Row row) {
@@ -404,7 +534,6 @@ class Sql {
 
   static Future<List<Channel>> searchGroup(Filters filters) async {
     var db = await DbFactory.db;
-    var offset = filters.page * pageSize - pageSize;
     var query = filters.query ?? "";
     var keywords = filters.useKeywords
         ? query.split(" ").map((f) => "%$f%").toList()
@@ -415,23 +544,61 @@ class Sql {
         WHERE (${getKeywordsSql(keywords.length)})
         AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
         AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+        AND name IS NOT NULL
         AND (hidden = 0 OR hidden IS NULL)
         ORDER BY (position IS NULL) ASC, position ASC, name ASC
-        LIMIT ?, ?
     ''';
     List<Object> params = [];
     params.addAll(keywords);
     params.addAll(mediaTypes);
     params.addAll(filters.sourceIds!);
-    params.add(offset);
-    params.add(pageSize);
     var results = await db.getAll(sqlQuery, params);
-    return results.map(groupChannelToRow).toList();
+    var groups = results.map(groupChannelToRow).toList();
+
+    // Debug: when searching categories, check if target category name appears
+    if (query.trim().isNotEmpty) {
+      final target = "зачарованные";
+      final found = groups.any((c) => c.name.toLowerCase().contains(target));
+      if (!found) {
+        print("DEBUG '$target' NOT FOUND in category search. Query=$query, useKeywords=${filters.useKeywords}");
+        print("DEBUG SQL used: $sqlQuery");
+        print("DEBUG params: $params");
+        final sample = groups.take(5).map((c) => c.name).toList();
+        print("DEBUG Sample category names: $sample");
+      } else {
+        final matched = groups.where((c) => c.name.toLowerCase().contains(target));
+        print("DEBUG '$target' FOUND in categories: ${matched.map((c) => c.name).toList()}");
+      }
+    }
+
+    // Cyrillic-aware fallback for groups: re-query without name filter and filter in Dart
+    bool _hasCyrillic(String s) => RegExp(r'[А-Яа-яЁё]').hasMatch(s);
+    if (query.trim().isNotEmpty && groups.isEmpty && _hasCyrillic(query)) {
+      var sqlQueryAlt = '''
+        SELECT * FROM groups 
+        WHERE (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
+        AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+        AND name IS NOT NULL
+        AND (hidden = 0 OR hidden IS NULL)
+        ORDER BY (position IS NULL) ASC, position ASC, name ASC
+      ''';
+      final altParams = <Object>[];
+      altParams.addAll(mediaTypes);
+      altParams.addAll(filters.sourceIds!);
+      final altResults = await db.getAll(sqlQueryAlt, altParams);
+      final ql = query.toLowerCase();
+      groups = altResults
+          .map(groupChannelToRow)
+          .where((g) => g.name.toLowerCase().contains(ql))
+          .toList();
+      print("DEBUG FALLBACK (Unicode LIKE groups): fetched ${altResults.length}, matched ${groups.length} for query '$query'");
+    }
+
+    return groups;
   }
 
   static Future<List<Channel>> searchGroupIncludeHidden(Filters filters) async {
     var db = await DbFactory.db;
-    var offset = filters.page * pageSize - pageSize;
     var query = filters.query ?? "";
     var keywords = filters.useKeywords
         ? query.split(" ").map((f) => "%$f%").toList()
@@ -442,15 +609,13 @@ class Sql {
         WHERE (${getKeywordsSql(keywords.length)})
         AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
         AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+        AND name IS NOT NULL
         ORDER BY (position IS NULL) ASC, position ASC, name ASC
-        LIMIT ?, ?
     ''';
     List<Object> params = [];
     params.addAll(keywords);
     params.addAll(mediaTypes);
     params.addAll(filters.sourceIds!);
-    params.add(offset);
-    params.add(pageSize);
     var results = await db.getAll(sqlQuery, params);
     return results.map(groupChannelToRow).toList();
   }
@@ -497,20 +662,41 @@ class Sql {
         SELECT * FROM groups 
         WHERE (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
         AND source_id IN (${generatePlaceholders(sourceIds.length)})
+        AND name IS NOT NULL
         AND (hidden = 0 OR hidden IS NULL)
         ORDER BY (position IS NULL) ASC, position ASC, name ASC
     ''';
     List<Object> params = [...mediaTypes.map((m) => m.index), ...sourceIds];
     var results = await db.getAll(sqlQuery, params);
-    return results.map(groupChannelToRow).toList();
+    final groups = results.map(groupChannelToRow).toList();
+
+    // Debug: check if target category appears in full list
+    final target = "зачарованные";
+    final found = groups.any((c) => c.name.toLowerCase().contains(target));
+    if (!found) {
+      print("DEBUG '$target' NOT FOUND in getAllGroupsByMediaTypes (full category list)");
+      print("DEBUG SQL used: $sqlQuery");
+      print("DEBUG params: $params");
+      final sample = groups.take(10).map((c) => c.name).toList();
+      print("DEBUG Sample category names: $sample");
+    } else {
+      final matched = groups.where((c) => c.name.toLowerCase().contains(target));
+      print("DEBUG '$target' FOUND in getAllGroupsByMediaTypes: ${matched.map((c) => c.name).toList()}");
+    }
+
+    return groups;
   }
 
   static Channel groupChannelToRow(Row row) {
+    final id = row.columnAt(0) as int?;
+    final name = (row.columnAt(1) as String?) ?? '(Uncategorized)';
+    final image = row.columnAt(2) as String?;
+    final sourceId = (row.columnAt(3) as int?) ?? 0;
     return Channel(
-        id: row.columnAt(0),
-        name: row.columnAt(1),
-        image: row.columnAt(2),
-        sourceId: row.columnAt(3),
+        id: id,
+        name: name,
+        image: image,
+        sourceId: sourceId,
         favorite: false,
         mediaType: MediaType.group);
   }
@@ -577,6 +763,28 @@ class Sql {
       SET favorite = ?
       WHERE id = ?
     ''', [favorite ? 1 : 0, channelId]);
+  }
+
+  // Debug method to check favorite status
+  static Future<Map<String, dynamic>?> debugChannelFavorite(
+      String channelName) async {
+    var db = await DbFactory.db;
+    final result = await db.getOptional('''
+      SELECT id, name, favorite, media_type, source_id, url
+      FROM channels
+      WHERE name = ?
+    ''', [channelName]);
+
+    if (result == null) return null;
+
+    return {
+      'id': result.columnAt(0),
+      'name': result.columnAt(1),
+      'favorite': result.columnAt(2) == 1,
+      'mediaType': MediaType.values[result.columnAt(3)],
+      'sourceId': result.columnAt(4),
+      'url': result.columnAt(5),
+    };
   }
 
   static Future<HashMap<String, String>> getSettings() async {
@@ -701,8 +909,8 @@ class Sql {
     var results = await db.getAll('''
       SELECT name, favorite, last_watched
       FROM channels
-      WHERE (favorite = 1 OR last_watched IS NOT NULL) AND source_id = ?
-    ''', [sourceId]);
+      WHERE (favorite = ? OR last_watched IS NOT NULL) AND source_id = ?
+    ''', [1, sourceId]);
     return results.map(rowToChannelPreserve).toList();
   }
 

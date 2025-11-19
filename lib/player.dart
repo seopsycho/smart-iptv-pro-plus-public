@@ -13,8 +13,8 @@ import 'package:smart_iptv_pro/select_dialog.dart';
 import 'package:smart_iptv_pro/services/chromecast_service.dart';
 import 'package:smart_iptv_pro/chromecast_button.dart';
 import 'package:smart_iptv_pro/airplay_button.dart';
-import 'dart:io' show Platform;
-import 'package:smart_iptv_pro/airplay_button.dart';
+import 'package:smart_iptv_pro/services/orientation_service.dart';
+import 'package:smart_iptv_pro/services/analytics_service.dart';
 import 'dart:io' show Platform;
 
 class Player extends StatefulWidget {
@@ -36,6 +36,7 @@ class _PlayerState extends State<Player> {
   Timer? _airPlayTimer;
   bool _airPlayWasConnected = false;
   bool _airPlayStarted = false;
+  bool _chromecastStarted = false;
 
   static const MethodChannel _airPlayCh =
       MethodChannel('com.smartiptv.pro/airplay');
@@ -43,7 +44,20 @@ class _PlayerState extends State<Player> {
   @override
   void initState() {
     super.initState();
+    AnalyticsService.logScreenView('Player', screenClass: 'PlayerScreen');
     mk.MediaKit.ensureInitialized();
+    
+    // Enable landscape orientation for video playback
+    if (Platform.isIOS) {
+      OrientationService.enableLandscape();
+      // Allow both landscape & portrait while in player so rotation is possible
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
+    
     initAsync();
     if (Platform.isIOS) {
       _airPlayTimer =
@@ -77,6 +91,12 @@ class _PlayerState extends State<Player> {
                 await player.pause();
                 ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Playing via AirPlay...')));
+                await AnalyticsService.logCastStart(
+                  contentType: widget.channel.mediaType.name,
+                  contentTitle: widget.channel.name,
+                  castDevice: 'AirPlay',
+                  castTechnology: 'airplay',
+                );
               }
             }
             _airPlayWasConnected = true;
@@ -114,6 +134,17 @@ class _PlayerState extends State<Player> {
   @override
   void dispose() {
     _airPlayTimer?.cancel();
+    
+    // Force portrait orientation when exiting player
+    if (Platform.isIOS) {
+      // First constrain Flutter side to portrait to avoid race conditions
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+      ]);
+      OrientationService.disableLandscape();
+      OrientationService.forcePortrait();
+    }
+    
     player.dispose();
     super.dispose();
   }
@@ -164,6 +195,14 @@ class _PlayerState extends State<Player> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
+        // Force portrait orientation immediately on iOS when back is pressed
+        if (Platform.isIOS) {
+          await SystemChrome.setPreferredOrientations(const [
+            DeviceOrientation.portraitUp,
+          ]);
+          await OrientationService.disableLandscape();
+          await OrientationService.forcePortrait();
+        }
         onExit();
         return true;
       },
@@ -187,6 +226,17 @@ class _PlayerState extends State<Player> {
   void onExit() {
     if (exiting) return;
     exiting = true;
+    // Ensure iOS switches back to portrait & disables landscape mask
+    if (Platform.isIOS) {
+      // Lock Flutter side first
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+      ]);
+      // Update native mask & rotate
+      OrientationService.disableLandscape();
+      OrientationService.forcePortrait();
+    }
+
     Future(() async {
       // Save position for movies
       try {
@@ -194,6 +244,25 @@ class _PlayerState extends State<Player> {
             widget.channel.id != null) {
           Sql.setPosition(
               widget.channel.id!, player.state.position.inSeconds);
+        }
+      } catch (_) {}
+      try {
+        final dur = player.state.position.inSeconds;
+        if (_airPlayStarted) {
+          await AnalyticsService.logCastEnd(
+            contentType: widget.channel.mediaType.name,
+            contentTitle: widget.channel.name,
+            castDevice: 'AirPlay',
+            duration: dur,
+          );
+        }
+        if (_chromecastStarted) {
+          await AnalyticsService.logCastEnd(
+            contentType: widget.channel.mediaType.name,
+            contentTitle: widget.channel.name,
+            castDevice: 'Chromecast',
+            duration: dur,
+          );
         }
       } catch (_) {}
       // Exit fullscreen first to avoid iOS orientation warnings
@@ -210,7 +279,7 @@ class _PlayerState extends State<Player> {
             .invokeMethod('stop')
             .timeout(const Duration(milliseconds: 600));
       } catch (_) {}
-      // Only adjust orientations on Android; iOS restricts programmatic changes
+      // Only adjust orientations on Android; iOS is handled in WillPopScope
       try {
         if (Platform.isAndroid) {
           SystemChrome.setPreferredOrientations([
@@ -270,6 +339,14 @@ class _PlayerState extends State<Player> {
       if (ok == true) {
         await player.pause();
       }
+      if (ok == true) {
+        await AnalyticsService.logCastStart(
+          contentType: widget.channel.mediaType.name,
+          contentTitle: widget.channel.name,
+          castDevice: 'AirPlay',
+          castTechnology: 'airplay',
+        );
+      }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(ok == true
               ? 'Playing via AirPlay...'
@@ -306,6 +383,15 @@ class _PlayerState extends State<Player> {
       if (!mounted) return;
       if (ok) {
         await player.pause();
+      }
+      if (ok) {
+        _chromecastStarted = true;
+        await AnalyticsService.logCastStart(
+          contentType: widget.channel.mediaType.name,
+          contentTitle: widget.channel.name,
+          castDevice: 'Chromecast',
+          castTechnology: 'chromecast',
+        );
       }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(

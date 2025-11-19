@@ -1,37 +1,42 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
-import 'package:smart_iptv_pro/backend/utils.dart';
-import 'package:smart_iptv_pro/bottom_nav.dart';
-import 'package:smart_iptv_pro/channel_tile.dart';
-import 'package:smart_iptv_pro/loading.dart';
 import 'package:smart_iptv_pro/models/channel.dart';
 import 'package:smart_iptv_pro/models/filters.dart';
 import 'package:smart_iptv_pro/models/home_manager.dart';
-import 'package:smart_iptv_pro/models/no_push_animation_material_page_route.dart';
+import 'package:smart_iptv_pro/models/id_data.dart';
+import 'package:smart_iptv_pro/models/media_type.dart';
 import 'package:smart_iptv_pro/models/node.dart';
 import 'package:smart_iptv_pro/models/node_type.dart';
+import 'package:smart_iptv_pro/models/source_type.dart';
 import 'package:smart_iptv_pro/models/view_type.dart';
-import 'package:smart_iptv_pro/error.dart';
-import 'package:smart_iptv_pro/whats_new_modal.dart';
-import 'package:smart_iptv_pro/models/media_type.dart';
-import 'package:smart_iptv_pro/settings_view.dart';
-import 'package:smart_iptv_pro/select_dialog.dart';
-import 'package:smart_iptv_pro/models/id_data.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:smart_iptv_pro/image_cache_manager.dart';
+import 'package:smart_iptv_pro/services/analytics_service.dart';
 import 'package:smart_iptv_pro/services/tmdb_service.dart';
 import 'package:smart_iptv_pro/models/tmdb_item.dart';
+import 'package:smart_iptv_pro/channel_tile.dart';
 import 'package:smart_iptv_pro/details.dart';
+import 'package:smart_iptv_pro/player.dart';
+import 'package:smart_iptv_pro/select_dialog.dart';
 import 'package:smart_iptv_pro/manage_categories.dart';
+import 'package:smart_iptv_pro/settings_view.dart';
 import 'package:smart_iptv_pro/downloads_view.dart';
+import 'package:smart_iptv_pro/bottom_nav.dart';
 import 'package:smart_iptv_pro/airplay_button.dart';
 import 'package:smart_iptv_pro/chromecast_button.dart';
-import 'package:smart_iptv_pro/poster_resolver.dart';
-import 'package:smart_iptv_pro/player.dart';
 import 'package:smart_iptv_pro/adaptive/adaptive_grid.dart';
+import 'package:smart_iptv_pro/image_cache_manager.dart';
+import 'package:smart_iptv_pro/error.dart';
+import 'package:smart_iptv_pro/backend/utils.dart';
+import 'package:smart_iptv_pro/loading.dart';
+import 'package:smart_iptv_pro/models/no_push_animation_material_page_route.dart';
+import 'package:smart_iptv_pro/whats_new_modal.dart';
+import 'package:smart_iptv_pro/debug_missing_channels.dart';
+import 'package:smart_iptv_pro/services/orientation_service.dart';
 
 class Home extends StatefulWidget {
   final HomeManager home;
@@ -46,10 +51,9 @@ class Home extends StatefulWidget {
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> {
+class _HomeState extends State<Home> with WidgetsBindingObserver {
   Timer? _debounce;
-  bool reachedMax = false;
-  final int pageSize = 36;
+  bool reachedMax = true;
   List<Channel> channels = [];
   // Feed data
   List<Channel> recentLive = [];
@@ -78,33 +82,37 @@ class _HomeState extends State<Home> {
   bool allowSeries = true;
   bool showHiddenInHome = false;
 
-  // Simplified poster URL method that uses channel's own image
-  Future<String?> _getPosterUrl(Channel c) async {
-    if (kDebugMode) {
-      debugPrint('_getPosterUrl: "${c.name}" - raw image: "${c.image}"');
-    }
-    
-    // Use the channel's own image - this should be the primary source
-    if (c.image != null && c.image!.trim().isNotEmpty) {
-      final trimmed = c.image!.trim();
-      if (kDebugMode) {
-        debugPrint('_getPosterUrl: "${c.name}" - returning URL: "$trimmed"');
-      }
-      return trimmed;
-    }
-    
-    // If no channel image, return null to use default asset
-    if (kDebugMode) {
-      debugPrint('_getPosterUrl: "${c.name}" - no image found, returning null');
-    }
-    return null;
-  }
+  bool moviesLandingLoading = false;
+  bool moviesLandingLoaded = false;
+  bool seriesLandingLoading = false;
+  bool seriesLandingLoaded = false;
 
+  
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_scrollListener);
+    WidgetsBinding.instance.addObserver(this);
+    AnalyticsService.logScreenView('Home', screenClass: 'HomeScreen');
+    AnalyticsService.logAppOpen();
+    // Ensure portrait lock when entering Home to avoid being stuck in landscape
+    SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
+    if (Platform.isIOS) {
+      OrientationService.disableLandscape();
+      OrientationService.forcePortrait();
+    }
     initializeAsync();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Re-assert portrait on resume to avoid sticking in landscape after backgrounding
+      SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
+      if (Platform.isIOS) {
+        OrientationService.disableLandscape();
+        OrientationService.forcePortrait();
+      }
+    }
   }
 
   Widget _buildHomeFlagsFilter() {
@@ -120,6 +128,11 @@ class _HomeState extends State<Home> {
               setState(() {
                 showHiddenInHome = v;
               });
+              await AnalyticsService.logFilterApply(
+                filterType: 'show_hidden_in_home',
+                filterValue: v.toString(),
+                contentType: 'home',
+              );
               await loadFeed();
             },
           ),
@@ -129,9 +142,13 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _refreshCategoriesAfterChange() async {
-    // Refresh both list/grid as needed without assumptions
     await load(false);
-    await loadLandingSections();
+    final idx = getStartingIndex();
+    if (idx == 3) {
+      await loadLandingSections(explicitType: MediaType.serie);
+    } else if (idx == 4) {
+      await loadLandingSections(explicitType: MediaType.movie);
+    }
   }
 
   Future<void> _openManageCategories() async {
@@ -164,8 +181,10 @@ class _HomeState extends State<Home> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         ListTile(
-                          leading: Icon(hidden ? Icons.visibility : Icons.visibility_off),
-                          title: Text(hidden ? 'Unhide category' : 'Hide category'),
+                          leading: Icon(
+                              hidden ? Icons.visibility : Icons.visibility_off),
+                          title: Text(
+                              hidden ? 'Unhide category' : 'Hide category'),
                           onTap: () async {
                             await Sql.setGroupHidden(c.id!, !hidden);
                             if (!mounted) return;
@@ -195,41 +214,154 @@ class _HomeState extends State<Home> {
         });
   }
 
-  Future<void> loadLandingSections() async {
+  Future<void> loadLandingSections({MediaType? explicitType}) async {
     final sourceIds = widget.home.filters.sourceIds ?? [];
     final settings = await SettingsService.getSettings();
-    if (widget.home.filters.mediaTypes != null &&
-        widget.home.filters.mediaTypes!.length == 1) {
-      final mt = widget.home.filters.mediaTypes!.first;
-      if (mt == MediaType.movie) {
-        final recent =
-            await Sql.getRecentlyAddedByMediaType(sourceIds, MediaType.movie, 30);
-        final cats = await Sql.getAllGroupsByMediaTypes(sourceIds, [MediaType.movie]);
-        List<TmdbItem> movies = [];
-        if (settings.tmdbApiKey.isNotEmpty) {
-          movies = await TmdbService(apiKey: settings.tmdbApiKey).trendingMovies();
+    if (kDebugMode) {
+      debugPrint(
+          'loadLandingSections: sourceIds=$sourceIds, mediaTypes=${widget.home.filters.mediaTypes}');
+    }
+    MediaType? targetType = explicitType;
+    final idx = getStartingIndex();
+    if (targetType == null) {
+      if (idx == 4) {
+        targetType = MediaType.movie;
+      } else if (idx == 3) {
+        targetType = MediaType.serie;
+      } else {
+        final mts = widget.home.filters.mediaTypes;
+        if (mts != null) {
+          if (mts.contains(MediaType.movie)) {
+            targetType = MediaType.movie;
+          } else if (mts.contains(MediaType.serie)) {
+            targetType = MediaType.serie;
+          }
         }
-        if (!mounted) return;
+      }
+    }
+    if (kDebugMode) {
+      debugPrint('loadLandingSections: idx=$idx -> targetType=$targetType');
+    }
+    if (targetType == MediaType.movie) {
+      if (mounted) {
         setState(() {
-          recentMovies = recent;
-          movieCategories = cats;
-          topMovies = movies;
-        });
-      } else if (mt == MediaType.serie) {
-        final recent =
-            await Sql.getRecentlyAddedByMediaType(sourceIds, MediaType.serie, 30);
-        final cats = await Sql.getAllGroupsByMediaTypes(sourceIds, [MediaType.serie]);
-        List<TmdbItem> series = [];
-        if (settings.tmdbApiKey.isNotEmpty) {
-          series = await TmdbService(apiKey: settings.tmdbApiKey).trendingSeries();
-        }
-        if (!mounted) return;
-        setState(() {
-          recentSeries = recent;
-          seriesCategories = cats;
-          topSeries = series;
+          moviesLandingLoading = true;
+          moviesLandingLoaded = false;
         });
       }
+      try {
+        if (sourceIds.isEmpty) {
+          if (!mounted) return;
+          setState(() {
+            recentMovies = [];
+            movieCategories = [];
+          });
+        } else {
+          final recent = await Sql.getRecentlyAddedByMediaType(
+              sourceIds, MediaType.movie, 30);
+          final cats =
+              await Sql.getAllGroupsByMediaTypes(sourceIds, [MediaType.movie]);
+          if (!mounted) return;
+          setState(() {
+            recentMovies = recent;
+            movieCategories = cats;
+          });
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('loadLandingSections: movies error: $e');
+        }
+        if (!mounted) return;
+        setState(() {
+          recentMovies = [];
+          movieCategories = [];
+        });
+      } finally {
+        if (!mounted) return;
+        setState(() {
+          moviesLandingLoading = false;
+          moviesLandingLoaded = true;
+        });
+      }
+      if (settings.tmdbApiKey.isNotEmpty) {
+        TmdbService(apiKey: settings.tmdbApiKey)
+            .trendingMovies()
+            .timeout(const Duration(seconds: 8))
+            .then((mv) {
+          if (!mounted) return;
+          setState(() {
+            topMovies = mv;
+          });
+        }).catchError((e) {
+          if (kDebugMode) {
+            debugPrint('loadLandingSections: TMDB movies error: $e');
+          }
+        });
+      }
+    } else if (targetType == MediaType.serie) {
+      if (mounted) {
+        setState(() {
+          seriesLandingLoading = true;
+          seriesLandingLoaded = false;
+        });
+      }
+      try {
+        if (sourceIds.isEmpty) {
+          if (!mounted) return;
+          setState(() {
+            recentSeries = [];
+            seriesCategories = [];
+          });
+        } else {
+          final recent = await Sql.getRecentlyAddedByMediaType(
+              sourceIds, MediaType.serie, 30);
+          final cats =
+              await Sql.getAllGroupsByMediaTypes(sourceIds, [MediaType.serie]);
+          if (!mounted) return;
+          setState(() {
+            recentSeries = recent;
+            seriesCategories = cats;
+          });
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('loadLandingSections: series error: $e');
+        }
+        if (!mounted) return;
+        setState(() {
+          recentSeries = [];
+          seriesCategories = [];
+        });
+      } finally {
+        if (!mounted) return;
+        setState(() {
+          seriesLandingLoading = false;
+          seriesLandingLoaded = true;
+        });
+      }
+      if (settings.tmdbApiKey.isNotEmpty) {
+        TmdbService(apiKey: settings.tmdbApiKey)
+            .trendingSeries()
+            .timeout(const Duration(seconds: 8))
+            .then((sr) {
+          if (!mounted) return;
+          setState(() {
+            topSeries = sr;
+          });
+        }).catchError((e) {
+          if (kDebugMode) {
+            debugPrint('loadLandingSections: TMDB series error: $e');
+          }
+        });
+      }
+    } else {
+      if (!mounted) return;
+      setState(() {
+        moviesLandingLoading = false;
+        moviesLandingLoaded = true;
+        seriesLandingLoading = false;
+        seriesLandingLoaded = true;
+      });
     }
   }
 
@@ -272,7 +404,8 @@ class _HomeState extends State<Home> {
 
     List<Channel> apply(List<Channel> list, {required bool isRecentSection}) {
       if (kDebugMode) {
-        debugPrint('apply: Processing ${list.length} items, isRecentSection: $isRecentSection');
+        debugPrint(
+            'apply: Processing ${list.length} items, isRecentSection: $isRecentSection');
       }
       final filtered = list.where((c) {
         final f = flags[c.id ?? -1];
@@ -291,7 +424,7 @@ class _HomeState extends State<Home> {
         final hideAll = (f["hide_all"] ?? 0) == 1;
         final hideRecent = (f["hide_recent"] ?? 0) == 1;
         final pinned = (f["pinned"] ?? 0) == 1;
-        
+
         if (hideAll) {
           if (kDebugMode) {
             debugPrint('apply: "${c.name}" hide_all is true, hiding');
@@ -300,11 +433,12 @@ class _HomeState extends State<Home> {
         }
         if (isRecentSection && hideRecent) {
           if (kDebugMode) {
-            debugPrint('apply: "${c.name}" hide_recent is true in recent section, hiding');
+            debugPrint(
+                'apply: "${c.name}" hide_recent is true in recent section, hiding');
           }
           return false;
         }
-        
+
         // Log image info for debugging
         if (kDebugMode) {
           if (pinned) {
@@ -313,7 +447,7 @@ class _HomeState extends State<Home> {
             debugPrint('apply: "${c.name}" is UNPINNED, image: "${c.image}"');
           }
         }
-        
+
         if (kDebugMode) {
           debugPrint('apply: "${c.name}" passed all filters, showing');
         }
@@ -365,7 +499,7 @@ class _HomeState extends State<Home> {
     final enabled = allSources.where((s) => s.enabled).toList();
     final items = <IdData<String>>[
       IdData(id: -1, data: 'All sources'),
-      ...enabled.map((s) => IdData(id: s.id!, data: s.name))
+      ...enabled.map((s) => IdData(id: s.id ?? -1, data: s.name))
     ];
     if (!mounted) return;
     showDialog(
@@ -383,14 +517,24 @@ class _HomeState extends State<Home> {
                 } else {
                   widget.home.filters.sourceIds = [id];
                 }
+                final selectedName = id == -1
+                    ? 'All sources'
+                    : (items.firstWhere((e) => e.id == id).data);
+                await AnalyticsService.logFilterApply(
+                  filterType: 'source',
+                  filterValue: selectedName,
+                  contentType: 'home',
+                );
                 Navigator.of(context).pop();
                 // Reset paging and reload sections according to current tab
                 await load(false);
                 final idx = getStartingIndex();
                 if (idx == 0) {
                   await loadFeed();
-                } else if (idx == 3 || idx == 4) {
-                  await loadLandingSections();
+                } else if (idx == 3) {
+                  await loadLandingSections(explicitType: MediaType.serie);
+                } else if (idx == 4) {
+                  await loadLandingSections(explicitType: MediaType.movie);
                 }
               });
         });
@@ -406,11 +550,14 @@ class _HomeState extends State<Home> {
           (await SettingsService.getSettings()).getMediaTypes();
     }
     await load();
-    // Load feed sections if on Home tab
-    if (getStartingIndex() == 0) {
+    // Load feed/landing depending on tab
+    final idx = getStartingIndex();
+    if (idx == 0) {
       await loadFeed();
-    } else if (getStartingIndex() == 3 || getStartingIndex() == 4) {
-      await loadLandingSections();
+    } else if (idx == 3) {
+      await loadLandingSections(explicitType: MediaType.serie);
+    } else if (idx == 4) {
+      await loadLandingSections(explicitType: MediaType.movie);
     }
     final String? version = await SettingsService.shouldShowWhatsNew();
     if (widget.firstLaunch && version != null) {
@@ -432,8 +579,10 @@ class _HomeState extends State<Home> {
       final idx = getStartingIndex();
       if (idx == 0) {
         await loadFeed();
-      } else if (idx == 3 || idx == 4) {
-        await loadLandingSections();
+      } else if (idx == 3) {
+        await loadLandingSections(explicitType: MediaType.serie);
+      } else if (idx == 4) {
+        await loadLandingSections(explicitType: MediaType.movie);
       }
     }
   }
@@ -471,12 +620,52 @@ class _HomeState extends State<Home> {
       if (widget.home.filters.viewType == ViewType.categories &&
           widget.home.filters.mediaTypes != null &&
           widget.home.filters.sourceIds != null) {
-        // Show all categories at once
-        channels = await Sql.getAllGroupsByMediaTypes(
-            widget.home.filters.sourceIds!, widget.home.filters.mediaTypes!);
-        reachedMax = true;
+        // In Live TV tab: if no query, show categories. If querying, search channels like movies/series.
+        final q = widget.home.filters.query?.trim() ?? '';
+        if (q.isEmpty) {
+          // Show all categories at once
+          channels = await Sql.getAllGroupsByMediaTypes(
+              widget.home.filters.sourceIds!, widget.home.filters.mediaTypes!);
+          reachedMax = true;
+        } else {
+          // Search channels (livestream) within selected sources
+          final searchFilters = Filters(
+            viewType: ViewType.all,
+            query: widget.home.filters.query,
+            sourceIds: widget.home.filters.sourceIds,
+            mediaTypes: widget.home.filters.mediaTypes,
+            useKeywords: widget.home.filters.useKeywords,
+            page: widget.home.filters.page,
+            seriesId: null,
+            groupId: null,
+          );
+          channels = await Sql.search(searchFilters);
+          reachedMax = true;
+        }
       } else {
         channels = await Sql.search(widget.home.filters);
+      }
+      // Log GA4 search event when applicable (only on initial load of a query)
+      if (!more && (widget.home.filters.query?.trim().isNotEmpty ?? false)) {
+        final idx = getStartingIndex();
+        final viewLabel = idx == 0
+            ? 'home'
+            : idx == 1
+                ? 'favorites'
+                : idx == 2
+                    ? 'live_tv'
+                    : idx == 3
+                        ? 'series'
+                        : idx == 4
+                            ? 'movies'
+                            : idx == 5
+                                ? 'downloads'
+                                : 'other';
+        await AnalyticsService.logSearch(
+          searchTerm: widget.home.filters.query!.trim(),
+          searchType: viewLabel,
+          resultCount: channels.length,
+        );
       }
       if (!more) {
         setState(() {
@@ -488,33 +677,20 @@ class _HomeState extends State<Home> {
         });
       }
       if (widget.home.filters.viewType != ViewType.categories) {
-        reachedMax = channels.length < pageSize;
+        reachedMax = true;
       }
     }, context);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _focusNode.dispose();
     _scrollController.dispose();
     _debounce?.cancel();
     super.dispose();
   }
 
-  void _scrollListener() async {
-    if (_scrollController.position.pixels >=
-            _scrollController.position.maxScrollExtent * 0.75 &&
-        !isLoading &&
-        !reachedMax) {
-      setState(() {
-        isLoading = true;
-      });
-      await load(true);
-      setState(() {
-        isLoading = false;
-      });
-    }
-  }
 
   void handleBack() {
     toggleSearch();
@@ -527,6 +703,13 @@ class _HomeState extends State<Home> {
   void clearSearch() {
     widget.home.filters.query = null;
     searchController.clear();
+  }
+
+  Future<void> _runMissingChannelsDiagnostics() async {
+    if (!kDebugMode) return;
+    print("=== USER-INITIATED DIAGNOSTICS FOR MISSING CHANNELS ===");
+    await DebugMissingChannels.runDiagnostics();
+    print("=== DIAGNOSTICS COMPLETE ===");
   }
 
   int getStartingIndex() {
@@ -550,15 +733,38 @@ class _HomeState extends State<Home> {
     // Map tabs: 0 Home, 1 Favorites, 2 Live TV, 3 Series, 4 Movies, 5 Downloads
     List<MediaType>? mediaTypes;
     ViewType viewType = ViewType.all;
+    List<int>? sourceIdsForNext;
+    final prevIndex = getStartingIndex();
+    final previousView = prevIndex == 0
+        ? 'home'
+        : prevIndex == 1
+            ? 'favorites'
+            : prevIndex == 2
+                ? 'live_tv'
+                : prevIndex == 3
+                    ? 'series'
+                    : prevIndex == 4
+                        ? 'movies'
+                        : prevIndex == 5
+                            ? 'downloads'
+                            : 'other';
     if (index == 0) {
       // Home -> use current settings toggles
       final settings = await SettingsService.getSettings();
       mediaTypes = settings.getMediaTypes();
       viewType = ViewType.all;
+      sourceIdsForNext = widget.home.filters.sourceIds;
     } else if (index == 1) {
-      final settings = await SettingsService.getSettings();
-      mediaTypes = settings.getMediaTypes();
+      // Favorites should include all media types by default
+      mediaTypes = const [
+        MediaType.livestream,
+        MediaType.serie,
+        MediaType.movie,
+      ];
       viewType = ViewType.favorites;
+      // Show favourites from ALL enabled sources
+      final enabled = await Sql.getEnabledSourcesMinimal();
+      sourceIdsForNext = enabled.map((e) => e.id).toList();
     } else if (index == 2) {
       mediaTypes = [MediaType.livestream];
       viewType = ViewType.categories; // categories first for Live TV
@@ -572,6 +778,28 @@ class _HomeState extends State<Home> {
       viewType = ViewType.downloads;
       mediaTypes = null;
     }
+    final newView = index == 0
+        ? 'home'
+        : index == 1
+            ? 'favorites'
+            : index == 2
+                ? 'live_tv'
+                : index == 3
+                    ? 'series'
+                    : index == 4
+                        ? 'movies'
+                        : index == 5
+                            ? 'downloads'
+                            : 'other';
+    // Log screen view for tab change to override generic route name
+    await AnalyticsService.logScreenView(
+      newView[0].toUpperCase() + newView.substring(1),
+      screenClass: '${newView[0].toUpperCase() + newView.substring(1)}Tab',
+    );
+    await AnalyticsService.logViewTypeChange(
+      viewType: newView,
+      previousView: previousView,
+    );
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
         NoPushAnimationMaterialPageRoute(
@@ -580,7 +808,8 @@ class _HomeState extends State<Home> {
                       filters: Filters(
                           viewType: viewType,
                           mediaTypes: mediaTypes,
-                          sourceIds: widget.home.filters.sourceIds)),
+                          sourceIds: sourceIdsForNext ??
+                              widget.home.filters.sourceIds)),
                 )),
         (route) => false);
   }
@@ -709,15 +938,36 @@ class _HomeState extends State<Home> {
                                     borderRadius: BorderRadius.circular(8),
                                     borderSide: BorderSide.none,
                                   ),
-                                  suffixIcon: IconButton(
-                                      onPressed: () {
-                                        widget.home.filters.useKeywords =
-                                            !widget.home.filters.useKeywords;
-                                        load(false);
-                                      },
-                                      icon: Icon(widget.home.filters.useKeywords
-                                          ? Icons.label
-                                          : Icons.label_outline)),
+                                  suffixIcon: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Debug diagnostics button (debug builds only)
+                                      if (kDebugMode)
+                                        IconButton(
+                                            onPressed: () async {
+                                              await _runMissingChannelsDiagnostics();
+                                            },
+                                            tooltip: 'Run missing channels diagnostics',
+                                            icon: const Icon(Icons.bug_report, size: 20)),
+                                      // Keywords toggle
+                                      IconButton(
+                                          onPressed: () async {
+                                            widget.home.filters.useKeywords =
+                                                !widget.home.filters.useKeywords;
+                                            await AnalyticsService.logFilterApply(
+                                              filterType: 'search_keywords',
+                                              filterValue: widget
+                                                  .home.filters.useKeywords
+                                                  .toString(),
+                                              contentType: 'search',
+                                            );
+                                            load(false);
+                                          },
+                                          icon: Icon(widget.home.filters.useKeywords
+                                              ? Icons.label
+                                              : Icons.label_outline)),
+                                    ],
+                                  ),
                                   filled: true, // Light background for contrast
                                   contentPadding:
                                       const EdgeInsets.symmetric(vertical: 0),
@@ -756,7 +1006,8 @@ class _HomeState extends State<Home> {
                                     title: 'Favorite TV Channels',
                                     height: 210,
                                     children: favoriteTv
-                                        .map((c) => _channelCard(c, enableOptions: true))
+                                        .map((c) => _channelCard(c,
+                                            enableOptions: true))
                                         .toList()),
                               if (allowSeries && topSeries.isNotEmpty)
                                 _buildTmdbGateOrSection(
@@ -768,14 +1019,16 @@ class _HomeState extends State<Home> {
                                     title: 'Recently added Series',
                                     height: 210,
                                     children: recentSeriesHome
-                                        .map((c) => _channelCard(c, enableOptions: true))
+                                        .map((c) => _channelCard(c,
+                                            enableOptions: true))
                                         .toList()),
                               if (allowSeries && favSeries.isNotEmpty)
                                 _buildSection(
                                     title: 'Watchlist • Series',
                                     height: 210,
                                     children: favSeries
-                                        .map((c) => _channelCard(c, enableOptions: true))
+                                        .map((c) => _channelCard(c,
+                                            enableOptions: true))
                                         .toList()),
                               if (allowMovies && topMovies.isNotEmpty)
                                 _buildTmdbGateOrSection(
@@ -787,44 +1040,55 @@ class _HomeState extends State<Home> {
                                     title: 'Recently added Movies',
                                     height: 210,
                                     children: recentMoviesHome
-                                        .map((c) => _channelCard(c, enableOptions: true))
+                                        .map((c) => _channelCard(c,
+                                            enableOptions: true))
                                         .toList()),
                               if (allowMovies && favMovies.isNotEmpty)
                                 _buildSection(
                                     title: 'Watchlist • Movies',
                                     height: 210,
                                     children: favMovies
-                                        .map((c) => _channelCard(c, enableOptions: true))
+                                        .map((c) => _channelCard(c,
+                                            enableOptions: true))
                                         .toList()),
-                          ],
+                            ],
                           ),
                         ))
-                      : (getStartingIndex() == 4 && !searchMode && widget.home.node == null)
+                      : (getStartingIndex() == 4 &&
+                              !searchMode &&
+                              widget.home.node == null)
                           ? _buildMoviesLanding()
-                          : (getStartingIndex() == 3 && !searchMode && widget.home.node == null)
+                          : (getStartingIndex() == 3 &&
+                                  !searchMode &&
+                                  widget.home.node == null)
                               ? _buildSeriesLanding()
-                              : (getStartingIndex() == 5 && !searchMode && widget.home.node == null)
+                              : (getStartingIndex() == 5 &&
+                                      !searchMode &&
+                                      widget.home.node == null)
                                   ? const DownloadsView(embedded: true)
-                      : GridView.builder(
-                          shrinkWrap: true,
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 15, 16, 5),
-                          itemCount: channels.length,
-                          gridDelegate: channelsGridDelegate(context),
-                          itemBuilder: (context, index) {
-                            final channel = channels[index];
-                            if (channel.mediaType == MediaType.group) {
-                              return _categoryGridTile(channel);
-                            }
-                            return ChannelTile(
-                              channel: channel,
-                              parentContext: context,
-                              setNode: setNode,
-                              onFavoriteToggled: _onFavoriteToggled,
-                              onShowDetails: null,
-                            );
-                          },
-                        )),
+                                  : GridView.builder(
+                                      shrinkWrap: true,
+                                      controller: _scrollController,
+                                      padding: const EdgeInsets.fromLTRB(
+                                          16, 15, 16, 5),
+                                      itemCount: channels.length,
+                                      gridDelegate:
+                                          channelsGridDelegate(context),
+                                      itemBuilder: (context, index) {
+                                        final channel = channels[index];
+                                        if (channel.mediaType ==
+                                            MediaType.group) {
+                                          return _categoryGridTile(channel);
+                                        }
+                                        return ChannelTile(
+                                          channel: channel,
+                                          parentContext: context,
+                                          setNode: setNode,
+                                          onFavoriteToggled: _onFavoriteToggled,
+                                          onShowDetails: null,
+                                        );
+                                      },
+                                    )),
             ]))),
             bottomNavigationBar: BottomNav(
               startingIndex: getStartingIndex(),
@@ -875,7 +1139,8 @@ class _HomeState extends State<Home> {
           title: title,
           height: 210,
           children: recentLive
-              .map((c) => _channelCard(c, playLiveOnTap: true, fromRecents: true, enableOptions: true))
+              .map((c) =>
+                  _channelCard(c, fromRecents: true, enableOptions: true))
               .toList());
     }
     return Padding(
@@ -885,18 +1150,15 @@ class _HomeState extends State<Home> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child:
-                Text(title, style: Theme.of(context).textTheme.titleLarge),
+            child: Text(title, style: Theme.of(context).textTheme.titleLarge),
           ),
           const SizedBox(height: 10),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
               'This will show up once you start watching TV channels',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
         ],
@@ -949,8 +1211,12 @@ class _HomeState extends State<Home> {
     });
     List<MediaType>? mediaTypes;
     if (idx == 0) {
-      final s = await SettingsService.getSettings();
-      mediaTypes = s.getMediaTypes();
+      // "All" in Favourites should show all types regardless of Settings toggles
+      mediaTypes = const [
+        MediaType.livestream,
+        MediaType.serie,
+        MediaType.movie,
+      ];
     } else if (idx == 1) {
       mediaTypes = [MediaType.livestream];
     } else if (idx == 2) {
@@ -960,6 +1226,26 @@ class _HomeState extends State<Home> {
     }
     widget.home.filters.viewType = ViewType.favorites;
     widget.home.filters.mediaTypes = mediaTypes;
+    widget.home.filters.query = null;
+    widget.home.filters.groupId = null;
+    widget.home.filters.seriesId = null;
+    // Always include all enabled sources when viewing Favourites
+    final enabled = await Sql.getEnabledSourcesMinimal();
+    widget.home.filters.sourceIds = enabled.map((e) => e.id).toList();
+
+    // Debug: Check ADN TV+ status
+    final adnDebug = await Sql.debugChannelFavorite("ADN TV+");
+    print("DEBUG ADN TV+: $adnDebug");
+    print("DEBUG sourceIds: ${widget.home.filters.sourceIds}");
+    print("DEBUG mediaTypes: ${widget.home.filters.mediaTypes}");
+
+    final value =
+        idx == 0 ? 'all' : (idx == 1 ? 'tv' : (idx == 2 ? 'series' : 'movies'));
+    await AnalyticsService.logFilterApply(
+      filterType: 'favorites_filter',
+      filterValue: value,
+      contentType: 'favorites',
+    );
     await load(false);
   }
 
@@ -970,8 +1256,18 @@ class _HomeState extends State<Home> {
     final idx = getStartingIndex();
     if (idx == 0) {
       await loadFeed();
-    } else if (idx == 3 || idx == 4) {
-      await loadLandingSections();
+    } else if (idx == 1) {
+      // Refresh favorites screen - reload both grid and feed to ensure consistency
+      final enabled = await Sql.getEnabledSourcesMinimal();
+      widget.home.filters.sourceIds = enabled.map((e) => e.id).toList();
+      widget.home.filters.groupId = null;
+      widget.home.filters.seriesId = null;
+      await load(false);
+      await loadFeed();
+    } else if (idx == 3) {
+      await loadLandingSections(explicitType: MediaType.serie);
+    } else if (idx == 4) {
+      await loadLandingSections(explicitType: MediaType.movie);
     }
   }
 
@@ -985,7 +1281,8 @@ class _HomeState extends State<Home> {
           return FutureBuilder<Map<String, bool>>(
               future: Sql.getHomeFlagsSingle(c.id!),
               builder: (context, snap) {
-                final data = snap.data ?? {"hide_recent": false, "hide_all": false, "pinned": false};
+                final data = snap.data ??
+                    {"hide_recent": false, "hide_all": false, "pinned": false};
                 final hiddenRecent = data["hide_recent"] == true;
                 final hiddenAll = data["hide_all"] == true;
                 final pinned = data["pinned"] == true;
@@ -995,32 +1292,62 @@ class _HomeState extends State<Home> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (fromRecents) 
+                        if (fromRecents)
                           ListTile(
-                            leading: Icon(hiddenRecent ? Icons.visibility : Icons.visibility_off),
-                            title: Text(hiddenRecent ? 'Unhide in Recents' : 'Hide from Recents'),
+                            leading: Icon(hiddenRecent
+                                ? Icons.visibility
+                                : Icons.visibility_off),
+                            title: Text(hiddenRecent
+                                ? 'Unhide in Recents'
+                                : 'Hide from Recents'),
                             onTap: () async {
                               await Sql.setHideRecent(c.id!, !hiddenRecent);
+                              final src = await Sql.getSourceFromId(c.sourceId);
+                              await AnalyticsService.logChannelAction(
+                                action: hiddenRecent
+                                    ? 'unhide_recent'
+                                    : 'hide_recent',
+                                channelName: c.name,
+                                sourceName: src.name,
+                              );
                               if (!mounted) return;
                               Navigator.of(context).pop();
                               await loadFeed();
                             },
                           ),
                         ListTile(
-                          leading: Icon(hiddenAll ? Icons.visibility : Icons.visibility_off_outlined),
-                          title: Text(hiddenAll ? 'Unhide from Home' : 'Hide permanently from Home'),
+                          leading: Icon(hiddenAll
+                              ? Icons.visibility
+                              : Icons.visibility_off_outlined),
+                          title: Text(hiddenAll
+                              ? 'Unhide from Home'
+                              : 'Hide permanently from Home'),
                           onTap: () async {
                             await Sql.setHideAll(c.id!, !hiddenAll);
+                            final src = await Sql.getSourceFromId(c.sourceId);
+                            await AnalyticsService.logChannelAction(
+                              action: hiddenAll ? 'unhide_all' : 'hide_all',
+                              channelName: c.name,
+                              sourceName: src.name,
+                            );
                             if (!mounted) return;
                             Navigator.of(context).pop();
                             await loadFeed();
                           },
                         ),
                         ListTile(
-                          leading: Icon(pinned ? Icons.push_pin : Icons.push_pin_outlined),
+                          leading: Icon(pinned
+                              ? Icons.push_pin
+                              : Icons.push_pin_outlined),
                           title: Text(pinned ? 'Unpin' : 'Pin to top'),
                           onTap: () async {
                             await Sql.setPinned(c.id!, !pinned);
+                            final src = await Sql.getSourceFromId(c.sourceId);
+                            await AnalyticsService.logChannelAction(
+                              action: pinned ? 'unpin' : 'pin',
+                              channelName: c.name,
+                              sourceName: src.name,
+                            );
                             if (!mounted) return;
                             Navigator.of(context).pop();
                             await loadFeed();
@@ -1040,15 +1367,26 @@ class _HomeState extends State<Home> {
         });
   }
 
-  Widget _channelCard(Channel c, {bool playLiveOnTap = false, bool fromRecents = false, bool enableOptions = false}) {
+  Widget _channelCard(Channel c,
+      {bool fromRecents = false, bool enableOptions = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: InkWell(
         onTap: () async {
-          if (playLiveOnTap && c.mediaType == MediaType.livestream) {
+          if (c.mediaType == MediaType.livestream) {
+            // Livestreams always play directly
             if (c.id != null) {
               await Sql.addToHistory(c.id!);
             }
+            final src = await Sql.getSourceFromId(c.sourceId);
+            final typeStr = getSourceTypeString(src.sourceType);
+            await AnalyticsService.logChannelPlay(
+              channelId: c.id?.toString() ?? 'unknown',
+              channelName: c.name,
+              sourceType: typeStr,
+              category: c.group,
+              sourceName: src.name,
+            );
             await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1056,6 +1394,7 @@ class _HomeState extends State<Home> {
                           channel: c,
                         )));
           } else {
+            // Movies and Series go to details page
             await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1066,85 +1405,98 @@ class _HomeState extends State<Home> {
           }
           if (mounted) setState(() {});
         },
-        onLongPress: enableOptions ? () => _showHomeItemOptions(c, fromRecents: fromRecents) : null,
+        onLongPress: enableOptions
+            ? () => _showHomeItemOptions(c, fromRecents: fromRecents)
+            : null,
         child: SizedBox(
           width: 140,
           height: 210,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
             children: [
-              Container(
-                width: 140,
-                height: 160,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Stack(
-                  children: [
-                    ClipRRect(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 140,
+                    height: 160,
+                    decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      child: Builder(
-                        builder: (context) {
-                          final url = c.image?.trim();
-                          if (url != null && url.isNotEmpty) {
-                            return Image.network(
-                              url,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) {
-                                return Image.asset(
-                                  'assets/icon.png',
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                              loadingBuilder: (_, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return Container(
-                                  color: Theme.of(context).colorScheme.surfaceContainer,
-                                  child: const Center(
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
-                                );
-                              },
-                            );
-                          }
-                          return Image.asset(
-                            'assets/icon.png',
-                            fit: BoxFit.cover,
-                          );
-                        },
-                      ),
                     ),
-                    if (c.favorite)
-                      const Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Icon(Icons.favorite, color: Color(0xFFE50914)),
-                      ),
-                    if (enableOptions && c.id != null)
-                      FutureBuilder<Map<String, bool>>(
-                        future: Sql.getHomeFlagsSingle(c.id!),
-                        builder: (context, snap) {
-                          final pinned = (snap.data?['pinned'] ?? false) == true;
-                          if (!pinned) return const SizedBox.shrink();
-                          return const Positioned(
-                            top: 6,
-                            left: 6,
-                            child: Icon(Icons.push_pin, color: Colors.amber),
-                          );
-                        },
-                      ),
-                  ],
-                ),
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Builder(
+                            builder: (context) {
+                              final url = c.image?.trim();
+                              if (url != null && url.isNotEmpty) {
+                                return Image.network(
+                                  url,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) {
+                                    return Image.asset(
+                                      'assets/icon.png',
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
+                                  loadingBuilder: (_, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Container(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainer,
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      ),
+                                    );
+                                  },
+                                );
+                              }
+                              return Image.asset(
+                                'assets/icon.png',
+                                fit: BoxFit.cover,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Text(
+                      c.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  )
+                ],
               ),
-              const SizedBox(height: 6),
-              Expanded(
-                child: Text(
-                  c.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
+              if (c.favorite)
+                const Positioned(
+                  top: 6,
+                  left: 6,
+                  child: IgnorePointer(
+                    child: Icon(Icons.favorite, color: Color(0xFFE50914)),
+                  ),
                 ),
-              )
+              if (enableOptions && c.id != null)
+                FutureBuilder<Map<String, bool>>(
+                  future: Sql.getHomeFlagsSingle(c.id!),
+                  builder: (context, snap) {
+                    final pinned = (snap.data?['pinned'] ?? false) == true;
+                    if (!pinned) return const SizedBox.shrink();
+                    return const Positioned(
+                      top: 6,
+                      right: 6,
+                      child: IgnorePointer(
+                        child: Icon(Icons.push_pin, color: Colors.amber),
+                      ),
+                    );
+                  },
+                ),
             ],
           ),
         ),
@@ -1175,10 +1527,10 @@ class _HomeState extends State<Home> {
                   borderRadius: BorderRadius.circular(8),
                   child: (item.posterUrl != null)
                       ? CachedNetworkImage(
-                        imageUrl: item.posterUrl!,
-                        cacheManager: ImageCacheManager.instance,
-                        fit: BoxFit.cover,
-                      )
+                          imageUrl: item.posterUrl!,
+                          cacheManager: ImageCacheManager.instance,
+                          fit: BoxFit.cover,
+                        )
                       : Container(
                           color: Theme.of(context).colorScheme.surfaceContainer,
                           child: const Icon(Icons.local_movies, size: 48),
@@ -1241,7 +1593,8 @@ class _HomeState extends State<Home> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Text(title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+              style:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
         ),
         const SizedBox(height: 10),
         Padding(
@@ -1256,7 +1609,8 @@ class _HomeState extends State<Home> {
               crossAxisSpacing: 16,
               childAspectRatio: 16 / 9,
             ),
-            itemBuilder: (context, index) => _categoryGridTile(categories[index]),
+            itemBuilder: (context, index) =>
+                _categoryGridTile(categories[index]),
           ),
         ),
       ]),
@@ -1264,6 +1618,87 @@ class _HomeState extends State<Home> {
   }
 
   Widget _buildMoviesLanding() {
+    if (kDebugMode) {
+      debugPrint(
+          '_buildMoviesLanding: topMovies=${topMovies.length}, recentMovies=${recentMovies.length}, movieCategories=${movieCategories.length}');
+      debugPrint(
+          '_buildMoviesLanding: sourceIds=${widget.home.filters.sourceIds}');
+      debugPrint(
+          '_buildMoviesLanding: mediaTypes=${widget.home.filters.mediaTypes}');
+    }
+
+    if (!moviesLandingLoaded && !moviesLandingLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        loadLandingSections(explicitType: MediaType.movie);
+      });
+    }
+
+    if (moviesLandingLoading || !moviesLandingLoaded) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (topMovies.isEmpty && recentMovies.isEmpty && movieCategories.isEmpty) {
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'No movies found',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This could be because:\n'
+                '• No IPTV sources are configured\n'
+                '• Movies are disabled in settings\n'
+                '• Your sources don\'t contain movie content\n'
+                '• No movie channels have been loaded yet',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              StatefulBuilder(
+                builder: (context, setState) {
+                  bool isRefreshing = false;
+                  return ElevatedButton(
+                    onPressed: isRefreshing
+                        ? null
+                        : () async {
+                            setState(() => isRefreshing = true);
+                            try {
+                              await Error.tryAsyncNoLoading(() async {
+                                await Utils.refreshAllSources();
+                              }, context, true, "Refreshed all sources");
+                              await loadLandingSections();
+                            } finally {
+                              if (mounted) {
+                                setState(() => isRefreshing = false);
+                              }
+                            }
+                          },
+                    child: isRefreshing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Refresh Sources'),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return SingleChildScrollView(
         child: Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
@@ -1283,6 +1718,89 @@ class _HomeState extends State<Home> {
   }
 
   Widget _buildSeriesLanding() {
+    if (kDebugMode) {
+      debugPrint(
+          '_buildSeriesLanding: topSeries=${topSeries.length}, recentSeries=${recentSeries.length}, seriesCategories=${seriesCategories.length}');
+      debugPrint(
+          '_buildSeriesLanding: sourceIds=${widget.home.filters.sourceIds}');
+      debugPrint(
+          '_buildSeriesLanding: mediaTypes=${widget.home.filters.mediaTypes}');
+    }
+
+    if (!seriesLandingLoaded && !seriesLandingLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        loadLandingSections(explicitType: MediaType.serie);
+      });
+    }
+
+    if (seriesLandingLoading || !seriesLandingLoaded) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (topSeries.isEmpty && recentSeries.isEmpty && seriesCategories.isEmpty) {
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'No series found',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This could be because:\n'
+                '• No IPTV sources are configured\n'
+                '• Series are disabled in settings\n'
+                '• Your sources don\'t contain series content\n'
+                '• No series channels have been loaded yet',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              StatefulBuilder(
+                builder: (context, setState) {
+                  bool isRefreshing = false;
+                  return ElevatedButton(
+                    onPressed: isRefreshing
+                        ? null
+                        : () async {
+                            setState(() => isRefreshing = true);
+                            try {
+                              // Try to refresh all sources
+                              await Error.tryAsyncNoLoading(() async {
+                                await Utils.refreshAllSources();
+                              }, context, true, "Refreshed all sources");
+                              // Reload the landing sections
+                              await loadLandingSections();
+                            } finally {
+                              if (mounted) {
+                                setState(() => isRefreshing = false);
+                              }
+                            }
+                          },
+                    child: isRefreshing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Refresh Sources'),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return SingleChildScrollView(
         child: Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
@@ -1300,5 +1818,4 @@ class _HomeState extends State<Home> {
       ]),
     ));
   }
-
 }

@@ -6,6 +6,11 @@ import AVKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  
+  // MARK: - Orientation Management
+  
+  private var shouldAllowLandscape = false
+  
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -26,7 +31,84 @@ import AVKit
     let session = AVAudioSession.sharedInstance()
     try? session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
     try? session.setActive(true)
+    
+    // Setup orientation control channel
+    setupOrientationChannel()
+    
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+  
+  private func setupOrientationChannel() {
+    guard let registrar = self.registrar(forPlugin: "OrientationChannel") else { return }
+    let channel = FlutterMethodChannel(name: "com.smartiptv.pro/orientation", binaryMessenger: registrar.messenger())
+    channel.setMethodCallHandler { [weak self] (call, result) in
+      self?.handleOrientationCall(call, result: result)
+    }
+  }
+  
+  private func handleOrientationCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "enableLandscape":
+      shouldAllowLandscape = true
+      DispatchQueue.main.async {
+        self.attemptRotationToDeviceOrientation()
+      }
+      result(true)
+    case "disableLandscape":
+      shouldAllowLandscape = false
+      DispatchQueue.main.async {
+        self.attemptRotationToDeviceOrientation()
+      }
+      result(true)
+    case "forcePortrait":
+      shouldAllowLandscape = false
+      DispatchQueue.main.async {
+        // Ensure iOS updates the orientation mask before setting the device value
+        self.attemptRotationToDeviceOrientation()
+        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        // Nudge the root VC to re-query supported orientations
+        if #available(iOS 16.0, *) {
+          UIApplication.shared.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        }
+      }
+      result(true)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+  
+  var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+    if shouldAllowLandscape {
+      return .allButUpsideDown
+    } else {
+      return .portrait
+    }
+  }
+
+  // Allow Flutter to query per-window supported orientations dynamically
+  override func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+    return shouldAllowLandscape ? .allButUpsideDown : .portrait
+  }
+  
+  var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+    if shouldAllowLandscape {
+      return UIApplication.shared.windows.first?.windowScene?.interfaceOrientation ?? .portrait
+    } else {
+      return .portrait
+    }
+  }
+  
+  private func attemptRotationToDeviceOrientation() {
+    if #available(iOS 16.0, *) {
+      let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+      let geometryPreferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: supportedInterfaceOrientations)
+      windowScene?.requestGeometryUpdate(geometryPreferences) { error in
+        print("Orientation update error: \(error)")
+      }
+    } else {
+      UIDevice.current.setValue(UIDevice.current.orientation.rawValue, forKey: "orientation")
+      UINavigationController.attemptRotationToDeviceOrientation()
+    }
   }
 }
 

@@ -1,18 +1,26 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
 import 'package:smart_iptv_pro/home.dart';
-import 'package:smart_iptv_pro/models/filters.dart';
-import 'package:smart_iptv_pro/models/home_manager.dart';
-import 'package:smart_iptv_pro/models/settings.dart';
 import 'package:smart_iptv_pro/setup.dart';
 import 'package:smart_iptv_pro/onboarding.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
 import 'package:smart_iptv_pro/image_cache_manager.dart';
+import 'package:smart_iptv_pro/models/filters.dart';
+import 'package:smart_iptv_pro/models/home_manager.dart';
+import 'package:smart_iptv_pro/models/settings.dart';
+import 'package:smart_iptv_pro/models/view_type.dart';
+import 'package:smart_iptv_pro/settings_view.dart';
+import 'package:smart_iptv_pro/services/analytics_service.dart';
 
 Future<void> main() async {
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -34,20 +42,34 @@ Future<void> main() async {
 
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await Firebase.initializeApp();
+    } else {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
     try {
       await dotenv.dotenv.load(fileName: ".env");
     } catch (_) {}
     await ImageCacheManager.initialize();
+    await AnalyticsService.initialize();
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+    // Note: logAppOpen will be called when the app successfully starts
     final hasSources = await Sql.hasSources();
     final settings = await SettingsService.getSettings();
     final hasSeenOnboarding = await SettingsService.getHasSeenOnboarding();
     try {
       await DownloadsService.init();
     } catch (_) {}
-    runApp(MyApp(
-      skipSetup: hasSources,
-      settings: settings,
-      showOnboarding: !hasSeenOnboarding,
+    runApp(ProviderScope(
+      child: MyApp(
+        skipSetup: hasSources,
+        settings: settings,
+        showOnboarding: !hasSeenOnboarding,
+      ),
     ));
   }, (Object error, StackTrace stack) {
     if (kDebugMode) {
@@ -57,7 +79,7 @@ Future<void> main() async {
   });
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   final bool skipSetup;
   final Settings settings;
   final bool showOnboarding;
@@ -68,7 +90,7 @@ class MyApp extends StatelessWidget {
       required this.showOnboarding});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = const ColorScheme.dark().copyWith(
       primary: const Color(0xFFE50914),
       secondary: const Color(0xFFE50914),
@@ -199,21 +221,39 @@ class MyApp extends StatelessWidget {
     );
 
     return MaterialApp(
-        title: 'SmartIPTV Pro+',
-        theme: theme,
-        darkTheme: theme,
-        themeMode: ThemeMode.dark,
-        debugShowCheckedModeBanner: false,
-        home: showOnboarding
-            ? Onboarding(skipSetup: skipSetup, settings: settings)
-            : (skipSetup
-                ? Home(
-                    firstLaunch: true,
-                    refresh: settings.isRefreshDueNow(),
-                    home: HomeManager(
-                        filters: Filters(
+      title: 'SmartIPTV Pro+',
+      theme: theme,
+      darkTheme: theme,
+      themeMode: ThemeMode.dark,
+      debugShowCheckedModeBanner: false,
+      navigatorObservers:
+          AnalyticsService.observer != null ? [AnalyticsService.observer!] : [],
+      home: showOnboarding
+          ? Onboarding(skipSetup: skipSetup, settings: settings)
+          : skipSetup
+              ? Home(
+                  home: HomeManager(
+                    filters: Filters(
                       viewType: settings.defaultView,
-                    )))
-                : const Setup()));
+                    ),
+                  ),
+                  refresh: settings.isRefreshDueNow(),
+                  firstLaunch: true,
+                )
+              : Setup(
+                  showAppBar: false,
+                ),
+      routes: {
+        '/home': (context) => Home(
+              home: HomeManager(
+                filters: Filters(
+                  viewType: ViewType.all,
+                ),
+              ),
+            ),
+        '/settings': (context) => const SettingsView(),
+        '/setup': (context) => Setup(showAppBar: true),
+      },
+    );
   }
 }

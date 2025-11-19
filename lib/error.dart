@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:loader_overlay/loader_overlay.dart';
 import 'package:smart_iptv_pro/models/result.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:smart_iptv_pro/services/analytics_service.dart';
 
 class Error {
   static Future<void> handleError(BuildContext context, String error) async {
+    try { await AnalyticsService.logError(errorType: 'ui_error', errorMessage: error); } catch (_) {}
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:smart_iptv_pro/backend/settings_service.dart';
 import 'package:smart_iptv_pro/backend/sql.dart';
@@ -20,6 +21,8 @@ import 'package:smart_iptv_pro/setup.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:smart_iptv_pro/downloads_view.dart';
 import 'package:smart_iptv_pro/services/downloads_service.dart';
+import 'package:smart_iptv_pro/services/analytics_service.dart';
+import 'package:smart_iptv_pro/debug_missing_channels.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -39,6 +42,7 @@ class _SettingsState extends State<SettingsView> {
   @override
   void initState() {
     super.initState();
+    AnalyticsService.logScreenView('Settings', screenClass: 'SettingsView');
     initAsync();
   }
 
@@ -58,6 +62,11 @@ class _SettingsState extends State<SettingsView> {
                   settings.metadataProvider = id == 1 ? 'tmdb' : 'omdb';
                 });
                 await updateSettings();
+                await AnalyticsService.logSettingChange(
+                  settingName: 'metadata_provider',
+                  settingValue: settings.metadataProvider,
+                  settingCategory: 'metadata',
+                );
                 Navigator.of(context).pop();
               });
         });
@@ -208,6 +217,11 @@ class _SettingsState extends State<SettingsView> {
                       }, context, true, "Source has been refreshed successfully");
 
                       await dialogFuture;
+                      await AnalyticsService.logPlaylistRefresh(
+                        sourceType: getSourceTypeString(source.sourceType),
+                        sourceName: source.name,
+                        isSuccessful: result.success,
+                      );
                       if (mounted && result.success) {
                         await reloadSources();
                       }
@@ -241,6 +255,10 @@ class _SettingsState extends State<SettingsView> {
                   () async => await Sql.deleteSource(source.id!),
                   context,
                   "Successfully deleted source");
+              await AnalyticsService.logPlaylistRemove(
+                sourceType: getSourceTypeString(source.sourceType),
+                sourceName: source.name,
+              );
               await reloadSources();
               if (sources.isEmpty) {
                 Navigator.pushAndRemoveUntil(
@@ -287,6 +305,11 @@ class _SettingsState extends State<SettingsView> {
                         settings.tmdbApiKey = controller.text.trim();
                       });
                       await updateSettings();
+                      await AnalyticsService.logSettingChange(
+                        settingName: 'tmdb_api_key',
+                        settingValue: settings.tmdbApiKey.isNotEmpty ? 'set' : 'cleared',
+                        settingCategory: 'metadata',
+                      );
                       if (mounted) Navigator.pop(context);
                     },
                     child: const Text('Save')),
@@ -381,6 +404,37 @@ class _SettingsState extends State<SettingsView> {
                                       fontSize: 30,
                                       fontWeight: FontWeight.bold))),
                           const SizedBox(height: 10),
+                          // Debug options (debug builds only)
+                          if (kDebugMode)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Padding(
+                                    padding: EdgeInsets.only(left: 10),
+                                    child: Text('Debug Options',
+                                        style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange))),
+                                ListTile(
+                                  leading: const Icon(Icons.bug_report, color: Colors.orange),
+                                  title: const Text('Run Missing Channels Diagnostics'),
+                                  subtitle: const Text('Check why specific channels are not found'),
+                                  onTap: () async {
+                                    await DebugMissingChannels.runDiagnostics();
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Diagnostics complete. Check console output.'),
+                                          duration: Duration(seconds: 3),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                                const Divider(),
+                              ],
+                            ),
                           Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -472,6 +526,11 @@ class _SettingsState extends State<SettingsView> {
                                                   setDialogState!(() {});
                                                 }
                                               });
+                                              await AnalyticsService.logPlaylistRefresh(
+                                                sourceType: getSourceTypeString(s.sourceType),
+                                                sourceName: s.name,
+                                                isSuccessful: true,
+                                              );
                                             }
                                           } finally {
                                             allDone = true;
@@ -536,6 +595,11 @@ class _SettingsState extends State<SettingsView> {
                                           settings.refreshIntervalHours = h;
                                         });
                                         await updateSettings();
+                                        await AnalyticsService.logSettingChange(
+                                          settingName: 'auto_refresh_hours',
+                                          settingValue: h.toString(),
+                                          settingCategory: 'sources',
+                                        );
                                         Navigator.of(context).pop();
                                       });
                                 },
@@ -554,6 +618,11 @@ class _SettingsState extends State<SettingsView> {
                                       settings.showLivestreams = value;
                                     });
                                     updateSettings();
+                                    AnalyticsService.logSettingChange(
+                                      settingName: 'show_livestreams',
+                                      settingValue: value.toString(),
+                                      settingCategory: 'content',
+                                    );
                                   },
                                 ),
                               ],
@@ -571,6 +640,11 @@ class _SettingsState extends State<SettingsView> {
                                       settings.showMovies = value;
                                     });
                                     updateSettings();
+                                    AnalyticsService.logSettingChange(
+                                      settingName: 'show_movies',
+                                      settingValue: value.toString(),
+                                      settingCategory: 'content',
+                                    );
                                   },
                                 ),
                               ],
@@ -588,6 +662,11 @@ class _SettingsState extends State<SettingsView> {
                                       settings.showSeries = value;
                                     });
                                     updateSettings();
+                                    AnalyticsService.logSettingChange(
+                                      settingName: 'show_series',
+                                      settingValue: value.toString(),
+                                      settingCategory: 'content',
+                                    );
                                   },
                                 ),
                               ],

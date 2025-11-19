@@ -19,7 +19,6 @@ SliverGridDelegateWithMaxCrossAxisExtent channelsGridDelegate(BuildContext conte
         crossAxisSpacing: 16,
       );
     case WindowSizeClass.compact:
-    default:
       return const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 315,
         mainAxisExtent: 120,

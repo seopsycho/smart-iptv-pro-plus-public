@@ -214,6 +214,48 @@ class DbFactory {
         await tx.execute('''
           CREATE INDEX IF NOT EXISTS index_home_flags_pinned ON home_flags(pinned);
         ''');
+      }))
+      ..add(SqliteMigration(9, (tx) async {
+        // Critical performance indexes for frequently queried columns
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_channels_url_media_source_fav 
+          ON channels(url, media_type, source_id, favorite, last_watched DESC);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_home_flags_composite 
+          ON home_flags(hide_all, hide_recent, pinned, channel_id);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_groups_composite_order 
+          ON groups(position ASC, name ASC, source_id, hidden);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_channels_url 
+          ON channels(url);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_settings_key 
+          ON settings(key);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_movie_positions_channel_position 
+          ON movie_positions(channel_id, position);
+        ''');
+      }))
+      ..add(SqliteMigration(10, (tx) async {
+        // Advanced optimization indexes for complex queries
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_channels_search_composite 
+          ON channels(media_type, source_id, favorite, url, last_watched DESC, id DESC);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_channels_series_source 
+          ON channels(series_id, source_id, updated_at DESC);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_downloads_channel_status 
+          ON downloads(channel_id, status, updated_at DESC);
+        ''');
       }));
     await migrations.migrate(db);
     // Improve concurrency: readers don't block writers and vice-versa

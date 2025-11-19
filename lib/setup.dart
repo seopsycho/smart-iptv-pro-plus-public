@@ -12,6 +12,7 @@ import 'package:smart_iptv_pro/models/source.dart';
 import 'package:smart_iptv_pro/models/source_type.dart';
 import 'package:smart_iptv_pro/error.dart';
 import 'package:smart_iptv_pro/adaptive/breakpoints.dart';
+import 'package:smart_iptv_pro/services/analytics_service.dart';
 
 class Setup extends StatefulWidget {
   final bool showAppBar;
@@ -90,6 +91,8 @@ class _SetupState extends State<Setup> {
                       final maxW = cls == WindowSizeClass.expanded
                           ? 680.0
                           : (cls == WindowSizeClass.medium ? 560.0 : 480.0);
+                      // Log screen view once when the widget is built
+                      AnalyticsService.logScreenView('Setup', screenClass: 'Setup');
                       return SizedBox(
                         width: maxW,
                         child: SingleChildScrollView(
@@ -362,6 +365,16 @@ class _SetupState extends State<Setup> {
                             await dialogFuture;
 
                             if (result.success) {
+                              // Log playlist add
+                              try {
+                                await AnalyticsService.logPlaylistAdd(
+                                  sourceType: getSourceTypeString(sourceType),
+                                  sourceName: sourceName,
+                                  urlType: sourceType == SourceType.xtream
+                                      ? 'xtream'
+                                      : (sourceType == SourceType.m3uUrl ? 'm3u_url' : 'm3u_file'),
+                                );
+                              } catch (_) {}
                               if (!mounted) return;
                               Navigator.pushAndRemoveUntil(
                                 context,
